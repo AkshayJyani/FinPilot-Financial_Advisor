@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Advisor AI</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .chat-container {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: 20%;
+        }
+        .bot-message {
+            background-color: #f5f5f5;
+            margin-right: 20%;
+        }
+        .stock-card {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .news-item {
+            border-left: 3px solid #007bff;
+            padding-left: 10px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center mb-4">Financial Advisor AI</h1>
+        
+        <div class="row">
+            <div class="col-md-4">
+                <h3>Portfolio Management</h3>
+                <div class="chat-container" id="portfolio-chat">
+                    <!-- Messages will appear here -->
+                </div>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="portfolio-query" placeholder="Ask about your portfolio...">
+                    <button class="btn btn-primary" onclick="sendPortfolioQuery()">Send</button>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <h3>General Queries</h3>
+                <div class="chat-container" id="general-chat">
+                    <!-- Messages will appear here -->
+                </div>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="general-query" placeholder="Ask a general question...">
+                    <button class="btn btn-primary" onclick="sendGeneralQuery()">Send</button>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <h3>WatchList Analyzer</h3>
+                <div class="chat-container" id="watchlist-chat">
+                    <!-- Messages will appear here -->
+                </div>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" id="watchlist-query" placeholder="Add/remove stocks or analyze...">
+                    <button class="btn btn-primary" onclick="sendWatchlistQuery()">Send</button>
+                </div>
+                <div class="input-group">
+                    <input type="file" class="form-control" id="watchlist-file" accept=".xlsx,.xls">
+                    <button class="btn btn-secondary" onclick="importWatchlist()">Import Excel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function formatResponse(data) {
+            if (data.status === 'error') {
+                return `<div class="alert alert-danger">${data.data.message}</div>`;
+            }
+            
+            let response = `<div class="alert alert-info">${data.data.message}</div>`;
+            
+            if (data.data.holdings) {
+                // Format holdings data
+                response += '<div class="holdings-data">';
+                for (const [symbol, holding] of Object.entries(data.data.holdings)) {
+                    response += `
+                        <div class="stock-card">
+                            <h5>${symbol}</h5>
+                            <ul class="list-unstyled">
+                                ${Object.entries(holding).map(([key, value]) => 
+                                    `<li><strong>${key}:</strong> ${value}</li>`
+                                ).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+                response += '</div>';
+            }
+            
+            if (data.data.investment_type_allocation) {
+                // Format investment type allocation
+                response += '<div class="allocation-data mt-3">';
+                response += '<h5>Investment Type Allocation</h5>';
+                for (const [type, allocation] of Object.entries(data.data.investment_type_allocation)) {
+                    response += `
+                        <div class="progress mb-2">
+                            <div class="progress-bar" role="progressbar" 
+                                style="width: ${allocation * 100}%" 
+                                aria-valuenow="${allocation * 100}" 
+                                aria-valuemin="0" 
+                                aria-valuemax="100">
+                                ${type}: ${(allocation * 100).toFixed(2)}%
+                            </div>
+                        </div>
+                    `;
+                }
+                response += '</div>';
+            }
+            
+            if (data.data.portfolio_metrics) {
+                // Format portfolio metrics
+                response += '<div class="metrics-data mt-3">';
+                response += '<h5>Portfolio Metrics</h5>';
+                response += '<ul class="list-unstyled">';
+                for (const [metric, value] of Object.entries(data.data.portfolio_metrics)) {
+                    response += `<li><strong>${metric}:</strong> ${value}</li>`;
+                }
+                response += '</ul></div>';
+            }
+            
+            return response;
+        }
+        
+        function formatWatchlistAnalysis(analysis, news) {
+            let html = '<div class="watchlist-analysis">';
+            
+            for (const [symbol, periods] of Object.entries(analysis)) {
+                html += `
+                    <div class="stock-card">
+                        <h4>${symbol}</h4>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <h5>1 Day</h5>
+                                ${formatMetrics(periods['1d'])}
+                            </div>
+                            <div class="col-md-4">
+                                <h5>2 Days</h5>
+                                ${formatMetrics(periods['2d'])}
+                            </div>
+                            <div class="col-md-4">
+                                <h5>1 Week</h5>
+                                ${formatMetrics(periods['1w'])}
+                            </div>
+                        </div>
+                        ${formatNews(symbol, news[symbol])}
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            return html;
+        }
+        
+        function formatMetrics(metrics) {
+            if (!metrics || Object.keys(metrics).length === 0) {
+                return '<p class="text-muted">No data available</p>';
+            }
+            
+            return `
+                <ul class="list-unstyled">
+                    <li>Price: $${metrics.current_price?.toFixed(2) || 'N/A'}</li>
+                    <li>Return: ${(metrics.daily_return * 100)?.toFixed(2) || 'N/A'}%</li>
+                    <li>Volatility: ${(metrics.volatility * 100)?.toFixed(2) || 'N/A'}%</li>
+                    <li>RSI: ${metrics.rsi?.toFixed(2) || 'N/A'}</li>
+                    <li>Volume: ${metrics.volume?.toLocaleString() || 'N/A'}</li>
+                </ul>
+            `;
+        }
+        
+        function formatNews(symbol, news) {
+            if (!news || news.length === 0) {
+                return '';
+            }
+            
+            let html = '<div class="mt-3"><h5>Recent News</h5>';
+            for (const article of news) {
+                html += `
+                    <div class="news-item">
+                        <h6><a href="${article.url}" target="_blank">${article.title}</a></h6>
+                        <p>${article.description}</p>
+                        <small class="text-muted">${new Date(article.published_at).toLocaleString()}</small>
+                    </div>
+                `;
+            }
+            html += '</div>';
+            return html;
+        }
+        
+        async function sendPortfolioQuery() {
+            const input = document.getElementById('portfolio-query');
+            const chat = document.getElementById('portfolio-chat');
+            const query = input.value.trim();
+            
+            if (query) {
+                chat.innerHTML += `<div class="message user-message">${query}</div>`;
+                input.value = '';
+                
+                try {
+                    const response = await fetch('/api/portfolio/query', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ query: query })
+                    });
+                    
+                    const result = await response.json();
+                    chat.innerHTML += `<div class="message bot-message">${formatResponse(result)}</div>`;
+                } catch (error) {
+                    chat.innerHTML += `<div class="message bot-message alert alert-danger">Error: ${error.message}</div>`;
+                }
+                
+                chat.scrollTop = chat.scrollHeight;
+            }
+        }
+        
+        async function sendGeneralQuery() {
+            const input = document.getElementById('general-query');
+            const chat = document.getElementById('general-chat');
+            const query = input.value.trim();
+            
+            if (query) {
+                chat.innerHTML += `<div class="message user-message">${query}</div>`;
+                input.value = '';
+                
+                try {
+                    const response = await fetch('/api/query', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ text: query })
+                    });
+                    
+                    const result = await response.json();
+                    chat.innerHTML += `<div class="message bot-message">${formatResponse(result)}</div>`;
+                } catch (error) {
+                    chat.innerHTML += `<div class="message bot-message alert alert-danger">Error: ${error.message}</div>`;
+                }
+                
+                chat.scrollTop = chat.scrollHeight;
+            }
+        }
+        
+        async function sendWatchlistQuery() {
+            const input = document.getElementById('watchlist-query');
+            const chat = document.getElementById('watchlist-chat');
+            const query = input.value.trim();
+            
+            if (query) {
+                chat.innerHTML += `<div class="message user-message">${query}</div>`;
+                input.value = '';
+                
+                try {
+                    const response = await fetch('/api/watchlist/query', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ text: query })
+                    });
+                    
+                    const result = await response.json();
+                    chat.innerHTML += `<div class="message bot-message">${formatResponse(result)}</div>`;
+                } catch (error) {
+                    chat.innerHTML += `<div class="message bot-message alert alert-danger">Error: ${error.message}</div>`;
+                }
+                
+                chat.scrollTop = chat.scrollHeight;
+            }
+        }
+        
+        async function importWatchlist() {
+            const fileInput = document.getElementById('watchlist-file');
+            const chat = document.getElementById('watchlist-chat');
+            
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                try {
+                    const response = await fetch('/api/watchlist/import', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const result = await response.json();
+                    chat.innerHTML += `<div class="message bot-message">${formatResponse(result)}</div>`;
+                } catch (error) {
+                    chat.innerHTML += `<div class="message bot-message alert alert-danger">Error: ${error.message}</div>`;
+                }
+                
+                chat.scrollTop = chat.scrollHeight;
+                fileInput.value = '';
+            }
+        }
+        
+        // Load initial portfolio holdings
+        async function loadHoldings() {
+            try {
+                const chat = document.getElementById('portfolio-chat');
+                chat.innerHTML += `<div class="message bot-message">Loading portfolio data...</div>`;
+                
+                const response = await fetch('/api/portfolio/holdings');
+                const result = await response.json();
+                
+                // Clear the loading message
+                chat.innerHTML = '';
+                
+                // Display the holdings
+                chat.innerHTML += `<div class="message bot-message">${formatResponse(result)}</div>`;
+                
+                // If no holdings were found, display a message
+                if (!result.data.holdings || Object.keys(result.data.holdings).length === 0) {
+                    chat.innerHTML += `<div class="message bot-message alert alert-warning">No holdings found. Please check your Binance API credentials and ensure you have assets in your account.</div>`;
+                }
+            } catch (error) {
+                console.error('Error loading holdings:', error);
+                const chat = document.getElementById('portfolio-chat');
+                chat.innerHTML += `<div class="message bot-message alert alert-danger">Error loading holdings: ${error.message}</div>`;
+            }
+        }
+        
+        // Load holdings when page loads
+        window.onload = loadHoldings;
+    </script>
+</body>
+</html> 
