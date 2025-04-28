@@ -33,10 +33,26 @@ async def read_root():
 
 @app.post("/api/query")
 async def process_query(query: dict):
+    global query_agent
     try:
+        # Check if query_agent is initialized
+        if not query_agent:
+            # Reinitialize the query agent
+            query_agent = QueryAgent()
+            
+        # Check if the query has the expected format
+        if "text" not in query:
+            return {
+                "status": "error",
+                "data": {
+                    "message": "Invalid query format. Expected 'text' field."
+                }
+            }
+            
         response = query_agent._run(query["text"])
         return response
     except Exception as e:
+        print(f"Error in process_query: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/portfolio/query")
@@ -48,7 +64,7 @@ async def process_portfolio_query(query: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/portfolio/holdings")
-async def get_portfolio_holdings():
+async def get_portfolio_holdings(request: dict = None):
     try:
         response = portfolio_agent._run("fetch holdings")
         return response

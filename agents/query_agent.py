@@ -12,10 +12,38 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import os
+import time
+from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import Field
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
 load_dotenv()
+
+class DataDirectoryHandler(FileSystemEventHandler):
+    def __init__(self, query_agent):
+        self.query_agent = query_agent
+        self.last_modified = {}  # Track file modification times
+
+    def on_created(self, event):
+        if not event.is_directory:
+            print(f"File created: {event.src_path}")
+            self.query_agent.update_vector_store()
+
+    def on_modified(self, event):
+        if not event.is_directory:
+            # Check if file was actually modified (not just metadata)
+            current_mtime = os.path.getmtime(event.src_path)
+            if event.src_path not in self.last_modified or current_mtime != self.last_modified[event.src_path]:
+                print(f"File modified: {event.src_path}")
+                self.last_modified[event.src_path] = current_mtime
+                self.query_agent.update_vector_store()
+
+    def on_deleted(self, event):
+        if not event.is_directory:
+            print(f"File deleted: {event.src_path}")
+            self.query_agent.update_vector_store()
 
 class QueryAgent(BaseTool):
     name: str = "query_agent"
@@ -23,24 +51,35 @@ class QueryAgent(BaseTool):
     data_dir: str = Field(default="data")
     vector_store: Any = Field(default=None)
     query_engine: Any = Field(default=None)
+    observer: Any = Field(default=None)
     
     def __init__(self):
         super().__init__()
         self.initialize_vector_store()
+        self.start_file_monitoring()
     
-    def initialize_vector_store(self):
-        """Initialize the vector store with documents"""
+    def start_file_monitoring(self):
+        """Start monitoring the data directory for changes"""
         try:
-            # Create data directory if it doesn't exist
-            if not os.path.exists(self.data_dir):
-                os.makedirs(self.data_dir)
-                print(f"Created data directory at {self.data_dir}")
-            
-            # Check if there are any files in the data directory
-            if not os.listdir(self.data_dir):
-                print(f"Warning: No files found in {self.data_dir}. Vector store will be empty.")
-                return
-            
+            event_handler = DataDirectoryHandler(self)
+            self.observer = Observer()
+            self.observer.schedule(event_handler, self.data_dir, recursive=False)
+            self.observer.start()
+            print(f"Started monitoring {self.data_dir} for changes")
+        except Exception as e:
+            print(f"Error starting file monitoring: {e}")
+    
+    def stop_file_monitoring(self):
+        """Stop monitoring the data directory"""
+        if self.observer:
+            self.observer.stop()
+            self.observer.join()
+            print("Stopped monitoring data directory")
+    
+    def update_vector_store(self):
+        """Update the vector store with current documents"""
+        try:
+            print("Updating vector store...")
             # Load documents
             documents = SimpleDirectoryReader(self.data_dir).load_data()
             
@@ -68,71 +107,44 @@ class QueryAgent(BaseTool):
                 response_synthesizer=response_synthesizer,
             )
             
+            print("Vector store updated successfully")
+        except Exception as e:
+            print(f"Error updating vector store: {e}")
+            self.vector_store = None
+            self.query_engine = None
+    
+    def initialize_vector_store(self):
+        """Initialize the vector store with documents"""
+        try:
+            # Create data directory if it doesn't exist
+            if not os.path.exists(self.data_dir):
+                os.makedirs(self.data_dir)
+                print(f"Created data directory at {self.data_dir}")
+            
+            # Check if there are any files in the data directory
+            if not os.listdir(self.data_dir):
+                print(f"Warning: No files found in {self.data_dir}. Vector store will be empty.")
+                return
+            
+            self.update_vector_store()
+            
         except Exception as e:
             print(f"Error initializing vector store: {e}")
             self.vector_store = None
             self.query_engine = None
     
-    def process_excel(self, file_path: str) -> pd.DataFrame:
-        """Process Excel file and return DataFrame"""
-        try:
-            return pd.read_excel(file_path)
-        except Exception as e:
-            print(f"Error processing Excel file: {e}")
-            return pd.DataFrame()
-    
-    def process_csv(self, file_path: str) -> pd.DataFrame:
-        """Process CSV file and return DataFrame"""
-        try:
-            return pd.read_csv(file_path)
-        except Exception as e:
-            print(f"Error processing CSV file: {e}")
-            return pd.DataFrame()
-    
-    def calculate_average_return(self, df: pd.DataFrame, period: str) -> float:
-        """Calculate average return for a given period"""
-        end_date = datetime.now()
-        if period == "6M":
-            start_date = end_date - timedelta(days=180)
-        elif period == "1Y":
-            start_date = end_date - timedelta(days=365)
-        else:
-            start_date = end_date - timedelta(days=30)
-        
-        mask = (df['date'] >= start_date) & (df['date'] <= end_date)
-        return df.loc[mask, 'return'].mean()
-    
-    def get_top_performers(self, df: pd.DataFrame, n: int = 3) -> List[Dict[str, Any]]:
-        """Get top n performing stocks"""
-        return df.nlargest(n, 'return').to_dict('records')
-    
-    def identify_underperformers(self, df: pd.DataFrame, threshold: float = -0.05) -> List[Dict[str, Any]]:
-        """Identify underperforming SIPs/stocks"""
-        return df[df['return'] < threshold].to_dict('records')
-    
-    def create_visualization(self, data: pd.DataFrame, viz_type: str) -> str:
-        """Create visualization based on data and type"""
-        if viz_type == "pie":
-            fig = px.pie(data, values='value', names='category')
-        elif viz_type == "bar":
-            fig = px.bar(data, x='category', y='value')
-        elif viz_type == "heatmap":
-            fig = px.imshow(data.corr())
-        else:
-            return "Unsupported visualization type"
-        
-        return fig.to_html()
-    
     def _run(self, query: str) -> Dict[str, Any]:
         """Process queries using RAG"""
         try:
             if not self.query_engine:
-                return {
-                    "status": "error",
-                    "data": {
-                        "message": "Query engine not initialized. Please check if data directory contains documents."
+                self.initialize_vector_store()
+                if not self.query_engine:
+                    return {
+                        "status": "error",
+                        "data": {
+                            "message": "Query engine not initialized. Please check if data directory contains documents."
+                        }
                     }
-                }
             
             # Get response from query engine
             response = self.query_engine.query(query)
@@ -144,8 +156,9 @@ class QueryAgent(BaseTool):
                     "message": str(response)
                 }
             }
-        
+            
         except Exception as e:
+            print(f"Error in QueryAgent._run: {str(e)}")
             return {
                 "status": "error",
                 "data": {

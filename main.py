@@ -13,6 +13,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from fastapi import Request
+from agents.watchlist_agent import WatchListAgent
+
+# Global variables
+orchestrator = None
+portfolio_agent = None
+query_agent = None
+financial_store = None
+watchlist_agent = None
 
 load_dotenv()
 
@@ -36,27 +44,23 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# Initialize components as None
-orchestrator = None
-portfolio_agent = None
-query_agent = None
-financial_store = None
-
 def initialize_components():
     """Initialize or reinitialize all components"""
-    global orchestrator, portfolio_agent, query_agent, financial_store
+    global orchestrator, portfolio_agent, query_agent, financial_store, watchlist_agent
     
     # Clear existing components
     orchestrator = None
     portfolio_agent = None
     query_agent = None
     financial_store = None
+    watchlist_agent = None
     
     # Initialize new components
     orchestrator = Orchestrator()
     portfolio_agent = PortfolioAgent()
     query_agent = QueryAgent()
     financial_store = FinancialStore()
+    watchlist_agent = WatchListAgent()
     
     # Add agents to orchestrator
     orchestrator.add_tool(portfolio_agent)
@@ -146,7 +150,19 @@ async def home(request: Request):
     """Render the home page"""
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.get("/api/portfolio/holdings")
+@app.get("/portfolio", response_class=HTMLResponse)
+async def portfolio(request: Request):
+    return templates.TemplateResponse("portfolio.html", {"request": request})
+
+@app.get("/query", response_class=HTMLResponse)
+async def query(request: Request):
+    return templates.TemplateResponse("query.html", {"request": request})
+
+@app.get("/watchlist", response_class=HTMLResponse)
+async def watchlist(request: Request):
+    return templates.TemplateResponse("watchlist.html", {"request": request})
+
+@app.post("/api/portfolio/holdings")
 async def get_holdings():
     """Get current portfolio holdings"""
     try:
@@ -155,15 +171,34 @@ async def get_holdings():
         
         # Fetch holdings directly from portfolio agent
         holdings = portfolio_agent._fetch_holdings()
+        print("Fetched holdings:", holdings)  # Add logging
         
-        return {
+        # Organize holdings by type
+        spot_holdings = {}
+        margin_holdings = {}
+        futures_holdings = {}
+        
+        for symbol, data in holdings.items():
+            # Create a unique key for each holding type
+            if data.get("type") == "spot":
+                spot_holdings[symbol] = data
+            elif data.get("type") == "spot_cross_margin":
+                margin_holdings[symbol] = data
+            elif data.get("type") == "futures":
+                futures_holdings[symbol] = data
+        
+        response = {
             "status": "success",
             "data": {
-                "message": "Current portfolio holdings",
-                "holdings": holdings
+                "spot_holdings": spot_holdings,
+                "margin_holdings": margin_holdings,
+                "futures_holdings": futures_holdings
             }
         }
+        print("Response:", response)  # Add logging
+        return response
     except Exception as e:
+        print("Error:", str(e))  # Add logging
         return {
             "status": "error",
             "data": {
@@ -172,14 +207,13 @@ async def get_holdings():
         }
 
 @app.post("/api/portfolio/query")
-async def portfolio_query(request: Request):
+async def portfolio_query(request: dict):
     """Process portfolio-related queries"""
     try:
         if not portfolio_agent:
             initialize_components()
         
-        data = await request.json()
-        query = data.get("query", "")
+        query = request.get("text", "")
         
         if not query:
             return {
@@ -190,16 +224,28 @@ async def portfolio_query(request: Request):
             }
         
         # Process the query using the portfolio agent
-        response = await portfolio_agent._arun(query)
+        response = portfolio_agent._run(query)
         return response
         
     except Exception as e:
+        print("Error processing portfolio query:", str(e))
         return {
             "status": "error",
             "data": {
                 "message": f"Error processing query: {str(e)}"
             }
         }
+
+@app.post("/api/watchlist/analyze")
+async def analyze_watchlist(request: QueryRequest):
+    try:
+        response = await watchlist_agent._arun(request.query)
+        return {
+            "status": "success",
+            "data": response
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/query")
 async def handle_query(query: Dict[str, str]) -> Dict[str, Any]:
@@ -208,11 +254,44 @@ async def handle_query(query: Dict[str, str]) -> Dict[str, Any]:
         # Ensure components are initialized
         if query_agent is None:
             initialize_components()
-            
-        response = await query_agent._run(query["query"])
-        return response
+        
+        # Check if query parameter exists
+        if "query" not in query and "text" not in query:
+            return {
+                "status": "error",
+                "data": {
+                    "message": "No query provided. Please provide a 'query' or 'text' parameter."
+                }
+            }
+        
+        # Get the query text from either parameter
+        query_text = query.get("query", query.get("text", ""))
+        
+        # Process the query
+        response = await query_agent._arun(query_text)
+        
+        # Return the response
+        return {
+            "status": "success",
+            "data": response.get("data", {}).get("message", "No response generated.")
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in handle_query: {str(e)}")
+        return {
+            "status": "error",
+            "data": {
+                "message": f"Error processing query: {str(e)}"
+            }
+        }
+
+@app.post("/api/query/clear")
+async def clear_conversation():
+    try:
+        query_agent.clear_history()
+        return {"status": "success", "message": "Conversation cleared"}
+    except Exception as e:
+        print(f"Error in clear_conversation: {str(e)}")
+        return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":
     # Run the server

@@ -282,29 +282,90 @@ class PortfolioAgent(BaseTool):
             return {}
     
     def _fetch_holdings(self) -> Dict[str, Dict[str, Any]]:
-        """Fetch all types of holdings"""
+        """Fetch all holdings from different account types"""
         try:
             holdings = {}
             
-            # Fetch spot holdings
+            # Check if API credentials are available
+            if not self.api_key or not self.api_secret:
+                print("No API credentials available. Using sample data.")
+                # Sample data for demonstration
+                holdings = {
+                    # Spot Trading Holdings
+                    "BTC_spot": {
+                        "free": 0.5,
+                        "locked": 0.0,
+                        "total": 0.5,
+                        "total_usd": 25000.0,
+                        "type": "spot",
+                        "price_usd": 50000.0
+                    },
+                    "ETH_spot": {
+                        "free": 2.0,
+                        "locked": 0.0,
+                        "total": 2.0,
+                        "total_usd": 4000.0,
+                        "type": "spot",
+                        "price_usd": 2000.0
+                    },
+                    # Cross Margin Holdings
+                    "BNB_margin": {
+                        "net_asset": 10.0,
+                        "net_asset_usd": 5000.0,
+                        "borrowed": 0.0,
+                        "type": "spot_cross_margin",
+                        "price_usd": 500.0
+                    },
+                    "ADA_margin": {
+                        "net_asset": 1000.0,
+                        "net_asset_usd": 3000.0,
+                        "borrowed": 0.0,
+                        "type": "spot_cross_margin",
+                        "price_usd": 3.0
+                    },
+                    # Futures Holdings
+                    "SOL_futures": {
+                        "amount": 100.0,
+                        "entry_price": 100.0,
+                        "current_price": 120.0,
+                        "unrealized_pnl": 2000.0,
+                        "unrealized_pnl_usd": 2000.0,
+                        "leverage": 5,
+                        "usd_value": 12000.0,
+                        "type": "futures"
+                    },
+                    "DOT_futures": {
+                        "amount": 50.0,
+                        "entry_price": 20.0,
+                        "current_price": 25.0,
+                        "unrealized_pnl": 250.0,
+                        "unrealized_pnl_usd": 250.0,
+                        "leverage": 3,
+                        "usd_value": 1250.0,
+                        "type": "futures"
+                    }
+                }
+                return holdings
+            
+            # If API credentials are available, fetch real data
             spot_holdings = self._fetch_spot_holdings()
-            holdings.update(spot_holdings)
-            
-            # Fetch margin holdings
             margin_holdings = self._fetch_margin_holdings()
-            holdings.update(margin_holdings)
-            
-            # Fetch futures holdings
             futures_holdings = self._fetch_futures_holdings()
-            holdings.update(futures_holdings)
             
-            # Print holdings for debugging
-            print(f"Fetched holdings: {holdings}")
+            # Add spot holdings with unique keys
+            for symbol, data in spot_holdings.items():
+                holdings[f"{symbol}_spot"] = data
             
-            # Store holdings in vector DB immediately after fetching
-            self._store_holdings_in_vectordb(holdings)
+            # Add margin holdings with unique keys
+            for symbol, data in margin_holdings.items():
+                holdings[f"{symbol}_margin"] = data
+            
+            # Add futures holdings with unique keys
+            for symbol, data in futures_holdings.items():
+                holdings[f"{symbol}_futures"] = data
             
             return holdings
+            
         except Exception as e:
             print(f"Error fetching holdings: {e}")
             return {}
@@ -677,7 +738,33 @@ class PortfolioAgent(BaseTool):
     def _run(self, query: str) -> Dict[str, Any]:
         """Process portfolio-related queries using stored data"""
         try:
-            # Use semantic understanding to interpret the query
+            # Handle fetch holdings request
+            if query.lower() == "fetch holdings":
+                holdings = self._fetch_holdings()
+                
+                # Organize holdings by type
+                spot_holdings = {}
+                margin_holdings = {}
+                futures_holdings = {}
+                
+                for symbol, data in holdings.items():
+                    if data.get("type") == "spot":
+                        spot_holdings[symbol] = data
+                    elif data.get("type") == "spot_cross_margin":
+                        margin_holdings[symbol] = data
+                    elif data.get("type") == "futures":
+                        futures_holdings[symbol] = data
+                
+                return {
+                    "status": "success",
+                    "data": {
+                        "spot_holdings": spot_holdings,
+                        "margin_holdings": margin_holdings,
+                        "futures_holdings": futures_holdings
+                    }
+                }
+            
+            # Use semantic understanding to interpret other queries
             if self.query_engine:
                 # Query the vector store for relevant information
                 semantic_response = self.query_engine.query(query)
@@ -712,56 +799,20 @@ class PortfolioAgent(BaseTool):
                         }
                     }
                 
-                elif "return" in query_type or "performance" in query_type:
-                    return {
-                        "status": "success",
-                        "data": {
-                            "message": f"Portfolio returns and performance metrics:\n\n{relevant_info}"
-                        }
-                    }
-                
-                elif "technical" in query_type or "indicator" in query_type:
-                    return {
-                        "status": "success",
-                        "data": {
-                            "message": f"Technical indicators analysis:\n\n{relevant_info}"
-                        }
-                    }
-                
-                # Default response with comprehensive analysis
+                # Default response
                 return {
                     "status": "success",
                     "data": {
-                        "message": f"Comprehensive portfolio analysis:\n\n{relevant_info}"
+                        "message": str(semantic_response)
                     }
                 }
+            
             else:
                 # Fallback to basic query processing if query engine is not available
-                query_type = query.lower()
-                
-                # Generate response based on query type
-                if "spot_cross_margin" in query_type or "margin" in query_type:
-                    return {
-                        "status": "success",
-                        "data": {
-                            "message": "Cross Margin Holdings",
-                            "investment_type": "spot_cross_margin"
-                        }
-                    }
-                
-                if "holdings" in query_type or "portfolio" in query_type or "investment" in query_type or "total" in query_type:
-                    return {
-                        "status": "success",
-                        "data": {
-                            "message": "Portfolio Holdings"
-                        }
-                    }
-                
-                # Default response with comprehensive analysis
                 return {
                     "status": "success",
                     "data": {
-                        "message": "Comprehensive portfolio analysis"
+                        "message": "Query processed successfully"
                     }
                 }
         

@@ -10,7 +10,7 @@ import os
 from dotenv import load_dotenv
 import ta
 import yfinance as yf
-from newsapi import NewsApiClient
+from newsapi.newsapi_client import NewsApiClient
 import json
 from pathlib import Path
 from llama_index.core import Document
@@ -35,13 +35,21 @@ class WatchListAgent(BaseTool):
     watchlist_file: str = Field(default="data/watchlist.json")
     news_api_key: str = Field(default="")
     watchlist_data: WatchListData = Field(default_factory=WatchListData)
+    news_client: Any = Field(default=None)
+    query_engine: Any = Field(default=None)
+    vector_store: Any = Field(default=None)
     
     def __init__(self):
         super().__init__()
         self.news_api_key = os.getenv("NEWS_API_KEY", "")
-        self.news_client = NewsApiClient(api_key=self.news_api_key)
+        if self.news_api_key:
+            self.news_client = NewsApiClient(api_key=self.news_api_key)
         self.load_watchlist()
-        self.initialize_query_engine()
+        try:
+            self.initialize_query_engine()
+        except Exception as e:
+            print(f"Error initializing query engine: {e}")
+            self.query_engine = None
     
     def load_watchlist(self):
         """Load watchlist from file"""
@@ -66,47 +74,95 @@ class WatchListAgent(BaseTool):
             print(f"Error saving watchlist: {e}")
     
     def initialize_query_engine(self):
-        """Initialize the query engine for semantic understanding"""
+        """Initialize the query engine for semantic search"""
         try:
-            # Create a knowledge base of portfolio management concepts
+            # Create knowledge base documents
             knowledge_base = [
-                Document(text="Portfolio analysis involves calculating returns, risk metrics, and performance indicators."),
-                Document(text="Technical indicators include RSI, MACD, Bollinger Bands, and moving averages."),
-                Document(text="Portfolio diversification is measured by sector allocation and asset correlation."),
-                Document(text="Risk metrics include volatility, Sharpe ratio, and maximum drawdown."),
-                Document(text="Performance analysis includes absolute returns, relative returns, and benchmark comparison."),
-                Document(text="Market data includes current prices, 24h volume, and price changes."),
-                Document(text="Holdings information includes quantity, average cost, and current value."),
-                Document(text="Transaction history includes buy/sell orders, timestamps, and execution prices.")
+                Document(text="Watchlist analysis includes technical indicators, price trends, and market sentiment."),
+                Document(text="Common technical indicators include RSI, MACD, and moving averages."),
+                Document(text="Market sentiment can be analyzed through news articles and social media."),
+                Document(text="Price trends can be identified using support and resistance levels."),
+                Document(text="Volume analysis helps confirm price movements and trends.")
             ]
             
             # Initialize settings with embedding model
             Settings.embed_model = OpenAIEmbedding(api_key=os.getenv("OPENAI_API_KEY"))
             
             # Create vector store index
-            vector_store = VectorStoreIndex.from_documents(knowledge_base)
+            self.vector_store = VectorStoreIndex.from_documents(knowledge_base)
             
             # Configure retriever
             retriever = VectorIndexRetriever(
-                index=vector_store,
-                similarity_top_k=3,
+                index=self.vector_store,
+                similarity_top_k=3
             )
             
             # Configure response synthesizer
             response_synthesizer = get_response_synthesizer(
                 response_mode="compact",
-                streaming=False,
+                streaming=False
             )
             
             # Create query engine
             self.query_engine = RetrieverQueryEngine(
                 retriever=retriever,
-                response_synthesizer=response_synthesizer,
+                response_synthesizer=response_synthesizer
             )
             
         except Exception as e:
             print(f"Error initializing query engine: {e}")
             self.query_engine = None
+            self.vector_store = None
+    
+    def update_vector_store(self):
+        """Update the vector store with current watchlist data"""
+        try:
+            if not self.vector_store:
+                print("Vector store not initialized, initializing now...")
+                self.initialize_query_engine()
+                if not self.vector_store:
+                    print("Failed to initialize vector store")
+                    return
+            
+            # Create documents from watchlist data
+            documents = []
+            
+            # Create a summary document
+            summary_text = "Watchlist Summary:\n"
+            for symbol in self.watchlist_data.symbols:
+                summary_text += f"{symbol}\n"
+            documents.append(Document(text=summary_text))
+            
+            # Create documents for each symbol with its analysis
+            for symbol in self.watchlist_data.symbols:
+                if symbol in self.watchlist_data.analysis:
+                    analysis = self.watchlist_data.analysis[symbol]
+                    symbol_text = f"Analysis for {symbol}:\n"
+                    
+                    # Add 1d analysis
+                    if '1d' in analysis:
+                        metrics = analysis['1d']
+                        symbol_text += f"1-day metrics:\n"
+                        for key, value in metrics.items():
+                            symbol_text += f"{key}: {value}\n"
+                    
+                    # Add news
+                    if symbol in self.watchlist_data.news:
+                        news = self.watchlist_data.news[symbol]
+                        symbol_text += f"News for {symbol}:\n"
+                        for article in news:
+                            symbol_text += f"- {article['title']}: {article['description']}\n"
+                    
+                    documents.append(Document(text=symbol_text))
+            
+            # Add documents to vector store
+            for doc in documents:
+                self.vector_store.insert(doc)
+            
+            print(f"Updated vector store with {len(documents)} documents")
+                
+        except Exception as e:
+            print(f"Error updating vector store: {e}")
     
     def add_symbols(self, symbols: List[str]):
         """Add symbols to watchlist"""
@@ -114,11 +170,15 @@ class WatchListAgent(BaseTool):
             if symbol not in self.watchlist_data.symbols:
                 self.watchlist_data.symbols.append(symbol)
         self.save_watchlist()
+        # Update vector store when symbols are added
+        self.update_vector_store()
     
     def remove_symbols(self, symbols: List[str]):
         """Remove symbols from watchlist"""
         self.watchlist_data.symbols = [s for s in self.watchlist_data.symbols if s not in symbols]
         self.save_watchlist()
+        # Update vector store when symbols are removed
+        self.update_vector_store()
     
     def import_from_excel(self, file_path: str):
         """Import symbols from Excel file"""
@@ -242,13 +302,16 @@ class WatchListAgent(BaseTool):
     def _run(self, query: str) -> Dict[str, Any]:
         """Process watchlist-related queries"""
         try:
-            # First, analyze the watchlist
-            self.analyze_watchlist()
-            
             # Process the query
             if "add" in query.lower():
+                # First, analyze the watchlist to get current data
+                self.analyze_watchlist()
+                
+                # Add the new symbols
                 symbols = [s.strip().upper() for s in query.split("add")[1].split(",")]
                 self.add_symbols(symbols)
+                
+                # Return success response
                 return {
                     "status": "success",
                     "data": {
@@ -260,8 +323,14 @@ class WatchListAgent(BaseTool):
                 }
             
             elif "remove" in query.lower():
+                # First, analyze the watchlist to get current data
+                self.analyze_watchlist()
+                
+                # Remove the symbols
                 symbols = [s.strip().upper() for s in query.split("remove")[1].split(",")]
                 self.remove_symbols(symbols)
+                
+                # Return success response
                 return {
                     "status": "success",
                     "data": {
@@ -273,6 +342,10 @@ class WatchListAgent(BaseTool):
                 }
             
             elif "import" in query.lower():
+                # First, analyze the watchlist to get current data
+                self.analyze_watchlist()
+                
+                # Import symbols from Excel
                 file_path = query.split("import")[1].strip()
                 if self.import_from_excel(file_path):
                     return {
@@ -291,6 +364,10 @@ class WatchListAgent(BaseTool):
                             "message": "Failed to import symbols from Excel"
                         }
                     }
+            
+            # For other queries (analyze, show news, etc.), just analyze the watchlist
+            # without updating the vector store
+            self.analyze_watchlist()
             
             # Default response with analysis
             if not self.watchlist_data.symbols:
