@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Analysis - Financial Advisor AI</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        }
+        .card {
+            background: rgba(30, 41, 59, 0.5);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            transition: all 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+        .section-header {
+            border-left: 4px solid #3b82f6;
+            padding-left: 12px;
+            margin-bottom: 16px;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(30, 41, 59, 0.5);
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #3b82f6;
+            border-radius: 3px;
+        }
+        .chat-box {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            padding: 16px;
+            height: calc(100vh - 200px);
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-input {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 8px;
+            padding: 12px;
+            color: white;
+            width: 100%;
+            margin-bottom: 12px;
+        }
+        .chat-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+        .chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-bottom: 12px;
+            padding-right: 8px;
+        }
+        .chat-message {
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            max-width: 85%;
+        }
+        .user-message {
+            background: rgba(59, 130, 246, 0.2);
+            margin-left: auto;
+        }
+        .bot-message {
+            background: rgba(148, 163, 184, 0.1);
+        }
+        .loading-dots::after {
+            content: '...';
+            animation: loading 1.5s infinite;
+        }
+        @keyframes loading {
+            0% { content: '.'; }
+            33% { content: '..'; }
+            66% { content: '...'; }
+        }
+    </style>
+</head>
+<body class="min-h-screen gradient-bg">
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-8">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-blue-600">
+                        Portfolio Analysis
+                    </h1>
+                    <p class="text-slate-400 mt-1">
+                        Analyze your Binance portfolio with detailed insights
+                    </p>
+                </div>
+                <a href="/" class="text-blue-400 hover:text-blue-300 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                </a>
+            </div>
+        </header>
+
+        <div class="flex flex-col lg:flex-row gap-8">
+            <!-- Main Content - 2/3 width -->
+            <div class="lg:w-2/3">
+                <!-- Portfolio Overview -->
+                <div class="card rounded-xl p-6 mb-8">
+                    <h2 class="text-xl font-semibold mb-4 section-header">Portfolio Overview</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div class="bg-slate-800 rounded-lg p-4">
+                            <p class="text-slate-400 text-sm">Total Value</p>
+                            <p class="text-2xl font-bold" id="total-value">$0.00</p>
+                        </div>
+                        <div class="bg-slate-800 rounded-lg p-4">
+                            <p class="text-slate-400 text-sm">24h Change</p>
+                            <p class="text-2xl font-bold" id="change-24h">0.00%</p>
+                        </div>
+                        <div class="bg-slate-800 rounded-lg p-4">
+                            <p class="text-slate-400 text-sm">Holdings</p>
+                            <p class="text-2xl font-bold" id="holdings-count">0</p>
+                        </div>
+                    </div>
+                    <div class="h-64">
+                        <canvas id="asset-allocation-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Holdings -->
+                <div class="card rounded-xl p-6">
+                    <h2 class="text-xl font-semibold mb-4 section-header">Holdings</h2>
+                    
+                    <!-- Spot Trading Section -->
+                    <div class="mb-8">
+                        <h3 class="text-lg font-medium mb-3 text-blue-400">Spot Trading</h3>
+                        <div class="overflow-x-auto custom-scrollbar" id="spot-holdings">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="text-left text-slate-400 text-sm">
+                                        <th class="pb-3">Asset</th>
+                                        <th class="pb-3">Amount</th>
+                                        <th class="pb-3">Value (USD)</th>
+                                        <th class="pb-3">24h Change</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="spot-holdings">
+                                    <tr class="text-slate-300">
+                                        <td colspan="4" class="py-4 text-center">Loading spot holdings...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Cross Margin Section -->
+                    <div class="mb-8">
+                        <h3 class="text-lg font-medium mb-3 text-blue-400">Cross Margin</h3>
+                        <div class="overflow-x-auto custom-scrollbar" id="cross-margin-holdings">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="text-left text-slate-400 text-sm">
+                                        <th class="pb-3">Asset</th>
+                                        <th class="pb-3">Amount</th>
+                                        <th class="pb-3">Value (USD)</th>
+                                        <th class="pb-3">24h Change</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cross-margin-holdings">
+                                    <tr class="text-slate-300">
+                                        <td colspan="4" class="py-4 text-center">Loading cross margin holdings...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Futures Section -->
+                    <div>
+                        <h3 class="text-lg font-medium mb-3 text-blue-400">Futures</h3>
+                        <div class="overflow-x-auto custom-scrollbar" id="futures-holdings">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="text-left text-slate-400 text-sm">
+                                        <th class="pb-3">Asset</th>
+                                        <th class="pb-3">Amount</th>
+                                        <th class="pb-3">Value (USD)</th>
+                                        <th class="pb-3">24h Change</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="futures-holdings">
+                                    <tr class="text-slate-300">
+                                        <td colspan="4" class="py-4 text-center">Loading futures holdings...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Box - 1/3 width -->
+            <div class="lg:w-1/3">
+                <div class="card rounded-xl p-6 sticky top-4">
+                    <h2 class="text-xl font-semibold mb-4 section-header">Portfolio Query</h2>
+                    <p class="text-slate-400 text-sm mb-4">
+                        Ask questions about your portfolio and get instant insights.
+                    </p>
+                    <div class="chat-box">
+                        <div class="chat-messages custom-scrollbar" id="chat-messages">
+                            <div class="chat-message bot-message">
+                                Hello! I can help you analyze your portfolio. What would you like to know?
+                            </div>
+                        </div>
+                        <input type="text" class="chat-input" id="chat-input" placeholder="Ask about your portfolio...">
+                        <button class="btn-primary w-full py-2 rounded-lg text-white font-medium" onclick="submitQuery()">
+                            Send
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Function to format currency
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(value);
+        }
+
+        // Function to format number with appropriate decimals
+        function formatNumber(value, decimals = 2) {
+            return new Intl.NumberFormat('en-US', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals
+            }).format(value);
+        }
+
+        // Function to create holdings table
+        function createHoldingsTable(holdings) {
+            if (!holdings || Object.keys(holdings).length === 0) {
+                return `<p class="text-gray-400">No holdings found.</p>`;
+            }
+
+            let table = `
+                <div class="overflow-x-auto">
+                    <table class="min-w-full">
+                        <thead>
+                            <tr class="text-left text-sm font-medium text-gray-400">
+                                <th class="px-4 py-2">Symbol</th>
+                                <th class="px-4 py-2">Quantity</th>
+                                <th class="px-4 py-2">Price (USD)</th>
+                                <th class="px-4 py-2">Value (USD)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            for (const [key, data] of Object.entries(holdings)) {
+                const [symbol, type] = key.split('_');
+                let quantity, price, value;
+
+                if (type === 'spot') {
+                    quantity = data.total || 0;
+                    price = data.price_usd || 0;
+                    value = data.total_usd || 0;
+                } else if (type === 'margin') {
+                    quantity = data.net_asset || 0;
+                    price = data.price_usd || 0;
+                    value = data.net_asset_usd || 0;
+                } else if (type === 'futures') {
+                    quantity = data.amount || 0;
+                    price = data.current_price || 0;
+                    value = data.usd_value || 0;
+                }
+
+                // Only add row if quantity is not zero
+                if (quantity !== 0) {
+                    table += `
+                        <tr class="border-t border-gray-700">
+                            <td class="px-4 py-2">${symbol}</td>
+                            <td class="px-4 py-2">${formatNumber(quantity, 6)}</td>
+                            <td class="px-4 py-2">${formatCurrency(price)}</td>
+                            <td class="px-4 py-2">${formatCurrency(value)}</td>
+                        </tr>
+                    `;
+                }
+            }
+
+            table += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            return table;
+        }
+
+        // Function to fetch and display holdings
+        async function fetchHoldings() {
+            try {
+                const response = await fetch('/api/portfolio/holdings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch holdings');
+                }
+
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    // Update spot holdings
+                    document.getElementById('spot-holdings').innerHTML = createHoldingsTable(data.data.spot_holdings);
+                    
+                    // Update margin holdings
+                    document.getElementById('cross-margin-holdings').innerHTML = createHoldingsTable(data.data.margin_holdings);
+                    
+                    // Update futures holdings
+                    document.getElementById('futures-holdings').innerHTML = createHoldingsTable(data.data.futures_holdings);
+                } else {
+                    throw new Error(data.data.message || 'Failed to fetch holdings');
+                }
+            } catch (error) {
+                console.error('Error fetching holdings:', error);
+                document.getElementById('spot-holdings').innerHTML = '<p class="text-red-400">Error loading spot holdings.</p>';
+                document.getElementById('cross-margin-holdings').innerHTML = '<p class="text-red-400">Error loading cross margin holdings.</p>';
+                document.getElementById('futures-holdings').innerHTML = '<p class="text-red-400">Error loading futures holdings.</p>';
+            }
+        }
+
+        // Fetch holdings when page loads
+        document.addEventListener('DOMContentLoaded', fetchHoldings);
+
+        // Function to handle portfolio queries
+        async function submitPortfolioQuery() {
+            const queryInput = document.getElementById('chat-input');
+            const query = queryInput.value.trim();
+            
+            if (!query) return;
+            
+            // Add user message to chat
+            const chatMessages = document.getElementById('chat-messages');
+            chatMessages.innerHTML += `
+                <div class="chat-message user-message">
+                    ${query}
+                </div>
+            `;
+            
+            // Clear input
+            queryInput.value = '';
+            
+            // Show loading indicator
+            const loadingMessage = document.createElement('div');
+            loadingMessage.className = 'chat-message bot-message';
+            loadingMessage.innerHTML = '<span class="loading-dots">Thinking</span>';
+            chatMessages.appendChild(loadingMessage);
+            
+            try {
+                const response = await fetch('/api/portfolio/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text: query })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to get response');
+                }
+                
+                const data = await response.json();
+                
+                // Remove loading indicator
+                chatMessages.removeChild(loadingMessage);
+                
+                // Add bot response
+                chatMessages.innerHTML += `
+                    <div class="chat-message bot-message">
+                        ${data.data.message}
+                    </div>
+                `;
+                
+                // Scroll to bottom
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+            } catch (error) {
+                console.error('Error:', error);
+                
+                // Remove loading indicator
+                chatMessages.removeChild(loadingMessage);
+                
+                // Add error message
+                chatMessages.innerHTML += `
+                    <div class="chat-message bot-message text-red-400">
+                        Sorry, there was an error processing your query. Please try again.
+                    </div>
+                `;
+            }
+        }
+
+        // Update UI with portfolio data
+        function updatePortfolioUI(data) {
+            // Update overview
+            document.getElementById('total-value').textContent = formatCurrency(data.total_value);
+            document.getElementById('change-24h').textContent = formatPercentage(data.change_24h);
+            document.getElementById('holdings-count').textContent = data.holdings_count;
+            
+            // Update chart
+            updateAssetAllocationChart(data.asset_allocation);
+        }
+
+        // Update asset allocation chart
+        function updateAssetAllocationChart(assetAllocation) {
+            const ctx = document.getElementById('asset-allocation-chart').getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (window.assetAllocationChart) {
+                window.assetAllocationChart.destroy();
+            }
+            
+            // Create new chart
+            window.assetAllocationChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: assetAllocation.map(item => item.asset),
+                    datasets: [{
+                        data: assetAllocation.map(item => item.percentage),
+                        backgroundColor: [
+                            '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', 
+                            '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                color: '#e2e8f0',
+                                font: {
+                                    family: "'Inter', sans-serif"
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    return `${label}: ${value.toFixed(2)}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Format percentage
+        function formatPercentage(value) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'percent',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(value / 100);
+        }
+
+        // Submit query to backend
+        function submitQuery() {
+            submitPortfolioQuery();
+        }
+    </script>
+</body>
+</html> 
