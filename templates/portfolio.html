@@ -50,6 +50,33 @@
             background: #3b82f6;
             border-radius: 3px;
         }
+        .portfolio-card {
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .portfolio-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.1) 100%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .portfolio-card:hover::before {
+            opacity: 1;
+        }
+        .portfolio-icon {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.2) 100%);
+            border-radius: 12px;
+            padding: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
         .chat-box {
             background: rgba(15, 23, 42, 0.6);
             border-radius: 12px;
@@ -61,17 +88,34 @@
         }
         .chat-input {
             background: rgba(30, 41, 59, 0.5);
-            border: 1px solid rgba(148, 163, 184, 0.1);
+            border: 1px solid rgba(71, 85, 105, 0.3);
             border-radius: 8px;
-            padding: 12px;
-            color: white;
-            width: 100%;
-            margin-bottom: 12px;
+            color: #e2e8f0;
+            padding: 12px 16px;
+            margin: 12px;
+            outline: none;
+            transition: all 0.2s;
+            width: calc(100% - 24px); /* Ensure full width minus margins */
         }
         .chat-input:focus {
-            outline: none;
             border-color: #3b82f6;
             box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+        .chat-input-container {
+            position: relative;
+            margin: 12px;
+        }
+        .chat-send-icon {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #3b82f6;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .chat-send-icon:hover {
+            color: #60a5fa;
         }
         .chat-messages {
             flex-grow: 1;
@@ -112,7 +156,7 @@
                         Portfolio Analysis
                     </h1>
                     <p class="text-slate-400 mt-1">
-                        Analyze your Binance portfolio with detailed insights
+                        Analyze your investment portfolios with detailed insights
                     </p>
                 </div>
                 <a href="/" class="text-blue-400 hover:text-blue-300 transition-colors">
@@ -123,120 +167,117 @@
             </div>
         </header>
 
-        <div class="flex flex-col lg:flex-row gap-8">
-            <!-- Main Content - 2/3 width -->
-            <div class="lg:w-2/3">
-                <!-- Portfolio Overview -->
-                <div class="card rounded-xl p-6 mb-8">
-                    <h2 class="text-xl font-semibold mb-4 section-header">Portfolio Overview</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                        <div class="bg-slate-800 rounded-lg p-4">
-                            <p class="text-slate-400 text-sm">Total Value</p>
-                            <p class="text-2xl font-bold" id="total-value">$0.00</p>
-                        </div>
-                        <div class="bg-slate-800 rounded-lg p-4">
-                            <p class="text-slate-400 text-sm">24h Change</p>
-                            <p class="text-2xl font-bold" id="change-24h">0.00%</p>
-                        </div>
-                        <div class="bg-slate-800 rounded-lg p-4">
-                            <p class="text-slate-400 text-sm">Holdings</p>
-                            <p class="text-2xl font-bold" id="holdings-count">0</p>
-                        </div>
+        <!-- Portfolio Selection Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Binance Portfolio Card -->
+            <a href="/binance_portfolio" class="portfolio-card card rounded-xl p-6">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="portfolio-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
                     </div>
-                    <div class="h-64">
-                        <canvas id="asset-allocation-chart"></canvas>
+                    <span class="text-sm text-blue-400">View details →</span>
+                </div>
+                <h2 class="text-2xl font-semibold mb-3">Binance Portfolio</h2>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="bg-slate-800 rounded-lg p-3">
+                        <p class="text-slate-400 text-sm">Total Value</p>
+                        <p class="text-xl font-bold" id="binance-total-value">$0.00</p>
+                    </div>
+                    <div class="bg-slate-800 rounded-lg p-3">
+                        <p class="text-slate-400 text-sm">24h Change</p>
+                        <p class="text-xl font-bold" id="binance-change-24h">0.00%</p>
                     </div>
                 </div>
+                <p class="text-slate-400 text-sm">
+                    Track your crypto investments across spot, margin, and futures trading
+                </p>
+            </a>
 
-                <!-- Holdings -->
-                <div class="card rounded-xl p-6">
-                    <h2 class="text-xl font-semibold mb-4 section-header">Holdings</h2>
-                    
-                    <!-- Spot Trading Section -->
-                    <div class="mb-8">
-                        <h3 class="text-lg font-medium mb-3 text-blue-400">Spot Trading</h3>
-                        <div class="overflow-x-auto custom-scrollbar" id="spot-holdings">
-                            <table class="w-full">
-                                <thead>
-                                    <tr class="text-left text-slate-400 text-sm">
-                                        <th class="pb-3">Asset</th>
-                                        <th class="pb-3">Amount</th>
-                                        <th class="pb-3">Value (USD)</th>
-                                        <th class="pb-3">24h Change</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="spot-holdings">
-                                    <tr class="text-slate-300">
-                                        <td colspan="4" class="py-4 text-center">Loading spot holdings...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+            <!-- Kite Portfolio Card -->
+            <a href="/kite_portfolio" class="portfolio-card card rounded-xl p-6">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="portfolio-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
                     </div>
-                    
-                    <!-- Cross Margin Section -->
-                    <div class="mb-8">
-                        <h3 class="text-lg font-medium mb-3 text-blue-400">Cross Margin</h3>
-                        <div class="overflow-x-auto custom-scrollbar" id="cross-margin-holdings">
-                            <table class="w-full">
-                                <thead>
-                                    <tr class="text-left text-slate-400 text-sm">
-                                        <th class="pb-3">Asset</th>
-                                        <th class="pb-3">Amount</th>
-                                        <th class="pb-3">Value (USD)</th>
-                                        <th class="pb-3">24h Change</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="cross-margin-holdings">
-                                    <tr class="text-slate-300">
-                                        <td colspan="4" class="py-4 text-center">Loading cross margin holdings...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+                    <span class="text-sm text-blue-400">View details →</span>
+                </div>
+                <h2 class="text-2xl font-semibold mb-3">Kite Portfolio</h2>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="bg-slate-800 rounded-lg p-3">
+                        <p class="text-slate-400 text-sm">Total Value</p>
+                        <p class="text-xl font-bold" id="kite-total-value">$0.00</p>
                     </div>
-                    
-                    <!-- Futures Section -->
-                    <div>
-                        <h3 class="text-lg font-medium mb-3 text-blue-400">Futures</h3>
-                        <div class="overflow-x-auto custom-scrollbar" id="futures-holdings">
-                            <table class="w-full">
-                                <thead>
-                                    <tr class="text-left text-slate-400 text-sm">
-                                        <th class="pb-3">Asset</th>
-                                        <th class="pb-3">Amount</th>
-                                        <th class="pb-3">Value (USD)</th>
-                                        <th class="pb-3">24h Change</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="futures-holdings">
-                                    <tr class="text-slate-300">
-                                        <td colspan="4" class="py-4 text-center">Loading futures holdings...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+                    <div class="bg-slate-800 rounded-lg p-3">
+                        <p class="text-slate-400 text-sm">24h Change</p>
+                        <p class="text-xl font-bold" id="kite-change-24h">0.00%</p>
                     </div>
                 </div>
-            </div>
+                <p class="text-slate-400 text-sm">
+                    Monitor your stock market investments and trading positions
+                </p>
+            </a>
+        </div>
 
-            <!-- Chat Box - 1/3 width -->
-            <div class="lg:w-1/3">
-                <div class="card rounded-xl p-6 sticky top-4">
-                    <h2 class="text-xl font-semibold mb-4 section-header">Portfolio Query</h2>
-                    <p class="text-slate-400 text-sm mb-4">
-                        Ask questions about your portfolio and get instant insights.
-                    </p>
-                    <div class="chat-box">
-                        <div class="chat-messages custom-scrollbar" id="chat-messages">
-                            <div class="chat-message bot-message">
-                                Hello! I can help you analyze your portfolio. What would you like to know?
+        <!-- Detailed Portfolio View (Hidden by default) -->
+        <div id="detailed-portfolio" class="hidden">
+            <div class="flex flex-col lg:flex-row gap-8">
+                <!-- Main Content - 2/3 width -->
+                <div class="lg:w-2/3">
+                    <!-- Portfolio Overview -->
+                    <div class="card rounded-xl p-6 mb-8">
+                        <h2 class="text-xl font-semibold mb-4 section-header">Portfolio Overview</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div class="bg-slate-800 rounded-lg p-4">
+                                <p class="text-slate-400 text-sm">Total Value</p>
+                                <p class="text-2xl font-bold" id="total-value">$0.00</p>
+                            </div>
+                            <div class="bg-slate-800 rounded-lg p-4">
+                                <p class="text-slate-400 text-sm">24h Change</p>
+                                <p class="text-2xl font-bold" id="change-24h">0.00%</p>
+                            </div>
+                            <div class="bg-slate-800 rounded-lg p-4">
+                                <p class="text-slate-400 text-sm">Holdings</p>
+                                <p class="text-2xl font-bold" id="holdings-count">0</p>
                             </div>
                         </div>
-                        <input type="text" class="chat-input" id="chat-input" placeholder="Ask about your portfolio...">
-                        <button class="btn-primary w-full py-2 rounded-lg text-white font-medium" onclick="submitQuery()">
-                            Send
-                        </button>
+                        <div class="h-64">
+                            <canvas id="asset-allocation-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Holdings -->
+                    <div class="card rounded-xl p-6">
+                        <h2 class="text-xl font-semibold mb-4 section-header">Holdings</h2>
+                        <div id="holdings-container">
+                            <!-- Holdings tables will be dynamically inserted here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Box - 1/3 width -->
+                <div class="lg:w-1/3">
+                    <div class="card rounded-xl p-6 sticky top-4">
+                        <h2 class="text-xl font-semibold mb-4 section-header">Portfolio Query</h2>
+                        <p class="text-slate-400 text-sm mb-4">
+                            Ask questions about your portfolio and get instant insights.
+                        </p>
+                        <div class="chat-box">
+                            <div class="chat-messages custom-scrollbar" id="chat-messages">
+                                <div class="chat-message bot-message">
+                                    Hello! I can help you analyze your portfolio. What would you like to know?
+                                </div>
+                            </div>
+                            <div class="chat-input-container">
+                                <input type="text" class="chat-input" id="chat-input" placeholder="Ask about your portfolio..." onkeypress="if(event.key === 'Enter') submitQuery()">
+                                <svg class="chat-send-icon h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" onclick="submitQuery()">
+                                    <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                </svg>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -260,6 +301,15 @@
                 minimumFractionDigits: decimals,
                 maximumFractionDigits: decimals
             }).format(value);
+        }
+
+        // Function to format percentage
+        function formatPercentage(value) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'percent',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(value / 100);
         }
 
         // Function to create holdings table
@@ -322,8 +372,20 @@
             return table;
         }
 
-        // Function to fetch and display holdings
-        async function fetchHoldings() {
+        // Function to show Binance portfolio
+        function showBinancePortfolio() {
+            document.getElementById('detailed-portfolio').classList.remove('hidden');
+            fetchBinancePortfolio();
+        }
+
+        // Function to show Kite portfolio
+        function showKitePortfolio() {
+            document.getElementById('detailed-portfolio').classList.remove('hidden');
+            fetchKitePortfolio();
+        }
+
+        // Function to fetch Binance portfolio
+        async function fetchBinancePortfolio() {
             try {
                 const response = await fetch('/api/portfolio/holdings', {
                     method: 'POST',
@@ -339,27 +401,142 @@
                 const data = await response.json();
                 
                 if (data.status === 'success') {
-                    // Update spot holdings
-                    document.getElementById('spot-holdings').innerHTML = createHoldingsTable(data.data.spot_holdings);
+                    // Update overview
+                    document.getElementById('total-value').textContent = formatCurrency(data.data.total_value);
+                    document.getElementById('change-24h').textContent = formatPercentage(data.data.change_24h);
+                    document.getElementById('holdings-count').textContent = data.data.holdings_count;
                     
-                    // Update margin holdings
-                    document.getElementById('cross-margin-holdings').innerHTML = createHoldingsTable(data.data.margin_holdings);
+                    // Update Binance card
+                    document.getElementById('binance-total-value').textContent = formatCurrency(data.data.total_value);
+                    document.getElementById('binance-change-24h').textContent = formatPercentage(data.data.change_24h);
                     
-                    // Update futures holdings
-                    document.getElementById('futures-holdings').innerHTML = createHoldingsTable(data.data.futures_holdings);
+                    // Update holdings
+                    const holdingsContainer = document.getElementById('holdings-container');
+                    holdingsContainer.innerHTML = `
+                        <div class="mb-8">
+                            <h3 class="text-lg font-medium mb-3 text-blue-400">Spot Trading</h3>
+                            ${createHoldingsTable(data.data.spot_holdings)}
+                        </div>
+                        <div class="mb-8">
+                            <h3 class="text-lg font-medium mb-3 text-blue-400">Cross Margin</h3>
+                            ${createHoldingsTable(data.data.margin_holdings)}
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-medium mb-3 text-blue-400">Futures</h3>
+                            ${createHoldingsTable(data.data.futures_holdings)}
+                        </div>
+                    `;
+                    
+                    // Update chart
+                    updateAssetAllocationChart(data.data.asset_allocation);
                 } else {
                     throw new Error(data.data.message || 'Failed to fetch holdings');
                 }
             } catch (error) {
-                console.error('Error fetching holdings:', error);
-                document.getElementById('spot-holdings').innerHTML = '<p class="text-red-400">Error loading spot holdings.</p>';
-                document.getElementById('cross-margin-holdings').innerHTML = '<p class="text-red-400">Error loading cross margin holdings.</p>';
-                document.getElementById('futures-holdings').innerHTML = '<p class="text-red-400">Error loading futures holdings.</p>';
+                console.error('Error fetching Binance portfolio:', error);
+                document.getElementById('holdings-container').innerHTML = '<p class="text-red-400">Error loading portfolio data.</p>';
             }
         }
 
-        // Fetch holdings when page loads
-        document.addEventListener('DOMContentLoaded', fetchHoldings);
+        // Function to fetch Kite portfolio
+        async function fetchKitePortfolio() {
+            try {
+                const response = await fetch('/api/portfolio/kite/holdings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch Kite holdings');
+                }
+
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    // Update overview
+                    document.getElementById('total-value').textContent = formatCurrency(data.data.total_value);
+                    document.getElementById('change-24h').textContent = formatPercentage(data.data.change_24h);
+                    document.getElementById('holdings-count').textContent = data.data.holdings_count;
+                    
+                    // Update Kite card
+                    document.getElementById('kite-total-value').textContent = formatCurrency(data.data.total_value);
+                    document.getElementById('kite-change-24h').textContent = formatPercentage(data.data.change_24h);
+                    
+                    // Update holdings
+                    const holdingsContainer = document.getElementById('holdings-container');
+                    holdingsContainer.innerHTML = `
+                        <div class="mb-8">
+                            <h3 class="text-lg font-medium mb-3 text-blue-400">Equity Holdings</h3>
+                            ${createHoldingsTable(data.data.equity_holdings)}
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-medium mb-3 text-blue-400">Mutual Funds</h3>
+                            ${createHoldingsTable(data.data.mutual_fund_holdings)}
+                        </div>
+                    `;
+                    
+                    // Update chart
+                    updateAssetAllocationChart(data.data.asset_allocation);
+                } else {
+                    throw new Error(data.data.message || 'Failed to fetch Kite holdings');
+                }
+            } catch (error) {
+                console.error('Error fetching Kite portfolio:', error);
+                document.getElementById('holdings-container').innerHTML = '<p class="text-red-400">Error loading portfolio data.</p>';
+            }
+        }
+
+        // Update asset allocation chart
+        function updateAssetAllocationChart(assetAllocation) {
+            const ctx = document.getElementById('asset-allocation-chart').getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (window.assetAllocationChart) {
+                window.assetAllocationChart.destroy();
+            }
+            
+            // Create new chart
+            window.assetAllocationChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: assetAllocation.map(item => item.asset),
+                    datasets: [{
+                        data: assetAllocation.map(item => item.percentage),
+                        backgroundColor: [
+                            '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', 
+                            '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                color: '#e2e8f0',
+                                font: {
+                                    family: "'Inter', sans-serif"
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    return `${label}: ${value.toFixed(2)}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
 
         // Function to handle portfolio queries
         async function submitPortfolioQuery() {
@@ -428,80 +605,17 @@
             }
         }
 
-        // Update UI with portfolio data
-        function updatePortfolioUI(data) {
-            // Update overview
-            document.getElementById('total-value').textContent = formatCurrency(data.total_value);
-            document.getElementById('change-24h').textContent = formatPercentage(data.change_24h);
-            document.getElementById('holdings-count').textContent = data.holdings_count;
-            
-            // Update chart
-            updateAssetAllocationChart(data.asset_allocation);
-        }
-
-        // Update asset allocation chart
-        function updateAssetAllocationChart(assetAllocation) {
-            const ctx = document.getElementById('asset-allocation-chart').getContext('2d');
-            
-            // Destroy existing chart if it exists
-            if (window.assetAllocationChart) {
-                window.assetAllocationChart.destroy();
-            }
-            
-            // Create new chart
-            window.assetAllocationChart = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: assetAllocation.map(item => item.asset),
-                    datasets: [{
-                        data: assetAllocation.map(item => item.percentage),
-                        backgroundColor: [
-                            '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', 
-                            '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'
-                        ],
-                        borderWidth: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'right',
-                            labels: {
-                                color: '#e2e8f0',
-                                font: {
-                                    family: "'Inter', sans-serif"
-                                }
-                            }
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    const label = context.label || '';
-                                    const value = context.raw || 0;
-                                    return `${label}: ${value.toFixed(2)}%`;
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        // Format percentage
-        function formatPercentage(value) {
-            return new Intl.NumberFormat('en-US', {
-                style: 'percent',
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            }).format(value / 100);
-        }
-
         // Submit query to backend
         function submitQuery() {
             submitPortfolioQuery();
         }
+
+        // Add event listener for Enter key
+        document.getElementById('chat-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                submitQuery();
+            }
+        });
     </script>
 </body>
 </html> 
