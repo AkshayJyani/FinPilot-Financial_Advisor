@@ -1,10 +1,11 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
 from agents.query_agent import QueryAgent
 from agents.portfolio_agent import PortfolioAgent
-from agents.watchlist_agent import WatchListAgent
+from agents.kite_portfolio_agent import KitePortfolioAgent
 import os
 from pathlib import Path
 
@@ -22,14 +23,17 @@ app.add_middleware(
 # Initialize agents
 query_agent = QueryAgent()
 portfolio_agent = PortfolioAgent()
-watchlist_agent = WatchListAgent()
+kite_portfolio_agent = KitePortfolioAgent()
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/")
-async def read_root():
-    return FileResponse('templates/index.html')
+# Setup templates
+templates = Jinja2Templates(directory="templates")
+
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/api/query")
 async def process_query(query: dict):
@@ -71,50 +75,75 @@ async def get_portfolio_holdings(request: dict = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/watchlist/query")
-async def process_watchlist_query(query: dict):
-    try:
-        response = watchlist_agent._run(query["text"])
-        return response
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/kite-portfolio", response_class=HTMLResponse)
+async def kite_portfolio_dash(request: Request):
+    """Render the Kite portfolio page"""
+    return templates.TemplateResponse("kite_portfolio.html", {"request": request})
 
-@app.post("/api/watchlist/import")
-async def import_watchlist(file: UploadFile = File(...)):
+@app.get("/kite_portfolio", response_class=HTMLResponse)
+async def kite_portfolio_underscore(request: Request):
+    """Render the Kite portfolio page"""
+    return templates.TemplateResponse("kite_portfolio.html", {"request": request})
+
+@app.get("/api/kite/portfolio/holdings")
+async def get_kite_holdings():
+    """Get Kite portfolio holdings"""
     try:
-        # Create uploads directory if it doesn't exist
-        upload_dir = Path("uploads")
-        upload_dir.mkdir(exist_ok=True)
-        
-        # Save the uploaded file
-        file_path = upload_dir / file.filename
-        with open(file_path, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
-        
-        # Process the file
-        response = watchlist_agent.import_from_excel(str(file_path))
-        
-        if response:
+        holdings = kite_portfolio_agent.get_holdings()
+        return holdings
+    except Exception as e:
+        return {
+            'status': 'error',
+            'data': {
+                'message': str(e)
+            }
+        }
+
+@app.post("/api/kite/portfolio/query")
+async def process_kite_query(query: dict):
+    """Process portfolio queries"""
+    try:
+        if "text" not in query:
             return {
-                "status": "success",
-                "data": {
-                    "message": "Successfully imported symbols from Excel",
-                    "current_watchlist": watchlist_agent.watchlist_data.symbols
+                'status': 'error',
+                'data': {
+                    'message': 'Query text is required'
                 }
             }
-        else:
-            raise HTTPException(status_code=400, detail="Failed to import symbols from Excel")
             
+        response = kite_portfolio_agent.process_query(query["text"])
+        return response
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        # Clean up the uploaded file
-        if 'file_path' in locals():
-            try:
-                os.remove(file_path)
-            except:
-                pass
+        return {
+            'status': 'error',
+            'data': {
+                'message': str(e)
+            }
+        }
+
+@app.get("/portfolio", response_class=HTMLResponse)
+async def portfolio(request: Request):
+    return templates.TemplateResponse("portfolio.html", {"request": request})
+
+@app.get("/query", response_class=HTMLResponse)
+async def query(request: Request):
+    return templates.TemplateResponse("query.html", {"request": request})
+
+@app.get("/binance_portfolio", response_class=HTMLResponse)
+async def binance_portfolio_underscore(request: Request):
+    return templates.TemplateResponse("binance_portfolio.html", {"request": request})
+
+@app.get("/binance-portfolio", response_class=HTMLResponse)
+async def binance_portfolio_dash(request: Request):
+    return templates.TemplateResponse("binance_portfolio.html", {"request": request})
+
+@app.get("/finance-query", response_class=HTMLResponse)
+async def finance_query(request: Request):
+    return templates.TemplateResponse("finance_query.html", {"request": request})
+
+@app.get("/finance_query", response_class=HTMLResponse)
+async def finance_query_underscore(request: Request):
+    return templates.TemplateResponse("finance_query.html", {"request": request})
 
 if __name__ == "__main__":
     import uvicorn
