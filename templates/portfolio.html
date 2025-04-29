@@ -616,6 +616,160 @@
                 submitQuery();
             }
         });
+
+        // Function to calculate total values for each investment type
+        function calculateInvestmentTypeValues(data) {
+            let totalSpotValue = 0;
+            let totalMarginValue = 0;
+            let totalFuturesValue = 0;
+
+            // Calculate spot value
+            for (const [key, holding] of Object.entries(data.spot_holdings || {})) {
+                totalSpotValue += holding.total_usd || 0;
+            }
+
+            // Calculate margin value
+            for (const [key, holding] of Object.entries(data.margin_holdings || {})) {
+                totalMarginValue += holding.net_asset_usd || 0;
+            }
+
+            // Calculate futures value
+            for (const [key, holding] of Object.entries(data.futures_holdings || {})) {
+                totalFuturesValue += holding.usd_value || 0;
+            }
+
+            return {
+                spotValue: totalSpotValue,
+                marginValue: totalMarginValue,
+                futuresValue: totalFuturesValue
+            };
+        }
+
+        // Function to update overview chart
+        function updateOverviewChart(spotValue, marginValue, futuresValue) {
+            const ctx = document.getElementById('overview-asset-allocation-chart').getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (window.overviewChart) {
+                window.overviewChart.destroy();
+            }
+            
+            // Create data for the chart
+            const labels = ['Spot', 'Margin', 'Futures'];
+            const data = [spotValue, marginValue, futuresValue];
+            
+            // Filter out zero values
+            const filteredLabels = [];
+            const filteredData = [];
+            for (let i = 0; i < labels.length; i++) {
+                if (data[i] > 0) {
+                    filteredLabels.push(labels[i]);
+                    filteredData.push(data[i]);
+                }
+            }
+            
+            // Calculate percentages
+            const total = filteredData.reduce((acc, val) => acc + val, 0);
+            const percentages = filteredData.map(val => ((val / total) * 100).toFixed(2));
+            
+            // Create new chart
+            window.overviewChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: filteredLabels,
+                    datasets: [{
+                        data: filteredData,
+                        backgroundColor: [
+                            '#3b82f6', // Blue for Spot
+                            '#10b981', // Green for Margin
+                            '#f59e0b'  // Orange for Futures
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                color: '#e2e8f0',
+                                font: {
+                                    family: "'Inter', sans-serif"
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const percentage = percentages[context.dataIndex];
+                                    return `${label}: ${formatCurrency(value)} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Function to fetch overview data
+        async function fetchOverviewData() {
+            try {
+                const response = await fetch('/api/portfolio/holdings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch holdings');
+                }
+
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    // Update overview metrics
+                    document.getElementById('total-value').textContent = formatCurrency(data.data.total_value);
+                    document.getElementById('change-24h').textContent = formatPercentage(data.data.change_24h);
+                    document.getElementById('holdings-count').textContent = data.data.holdings_count;
+                    
+                    // Calculate values by investment type
+                    const { spotValue, marginValue, futuresValue } = calculateInvestmentTypeValues(data.data);
+                    
+                    // Update investment type values
+                    document.getElementById('overview-spot-value').textContent = formatCurrency(spotValue);
+                    document.getElementById('overview-margin-value').textContent = formatCurrency(marginValue);
+                    document.getElementById('overview-futures-value').textContent = formatCurrency(futuresValue);
+                    
+                    // Update last updated timestamp
+                    const now = new Date();
+                    document.getElementById('overview-last-updated').textContent = now.toLocaleTimeString();
+                    
+                    // Update overview chart
+                    updateOverviewChart(spotValue, marginValue, futuresValue);
+                    
+                    // Update Binance card
+                    document.getElementById('binance-total-value').textContent = formatCurrency(data.data.total_value);
+                    document.getElementById('binance-change-24h').textContent = formatPercentage(data.data.change_24h);
+                } else {
+                    throw new Error(data.data.message || 'Failed to fetch holdings');
+                }
+            } catch (error) {
+                console.error('Error fetching overview data:', error);
+            }
+        }
+
+        // Load overview data on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchOverviewData();
+            
+            // Refresh data every 60 seconds
+            setInterval(fetchOverviewData, 60000);
+        });
     </script>
 </body>
 </html> 

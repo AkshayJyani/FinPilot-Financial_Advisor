@@ -126,7 +126,7 @@
             <div class="flex justify-between items-center">
                 <div>
                     <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-blue-600">
-                        Portfolio Analysis
+                        BINANCE PORTFOLIO ANALYSIS
                     </h1>
                     <p class="text-slate-400 mt-1">
                         Analyze your Binance portfolio with detailed insights
@@ -146,22 +146,54 @@
                 <!-- Portfolio Overview -->
                 <div class="card rounded-xl p-6 mb-8">
                     <h2 class="text-xl font-semibold mb-4 section-header">Portfolio Overview</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                        <div class="bg-slate-800 rounded-lg p-4">
-                            <p class="text-slate-400 text-sm">Total Value</p>
-                            <p class="text-2xl font-bold" id="total-value">$0.00</p>
+                    <div class="flex flex-col lg:flex-row gap-4">
+                        <div class="lg:w-3/5">
+                            <div class="grid grid-cols-3 gap-3 mb-4">
+                                <div class="bg-slate-800 rounded-lg p-3">
+                                    <p class="text-slate-400 text-xs">Total Value</p>
+                                    <p class="text-xl font-bold" id="total-value">$0.00</p>
+                                </div>
+                                <div class="bg-slate-800 rounded-lg p-3">
+                                    <p class="text-slate-400 text-xs">24h Change</p>
+                                    <p class="text-xl font-bold" id="change-24h">0.00%</p>
+                                </div>
+                                <div class="bg-slate-800 rounded-lg p-3">
+                                    <p class="text-slate-400 text-xs">Holdings</p>
+                                    <p class="text-xl font-bold" id="holdings-count">0</p>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-slate-400 text-xs">Spot Holdings</span>
+                                        <span class="font-medium text-slate-200 text-sm" id="spot-value">$0.00</span>
+                                    </div>
+                                </div>
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-slate-400 text-xs">Margin Holdings</span>
+                                        <span class="font-medium text-slate-200 text-sm" id="margin-value">$0.00</span>
+                                    </div>
+                                </div>
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-slate-400 text-xs">Futures Holdings</span>
+                                        <span class="font-medium text-slate-200 text-sm" id="futures-value">$0.00</span>
+                                    </div>
+                                </div>
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-slate-400 text-xs">Last Updated</span>
+                                        <span class="font-medium text-slate-200 text-sm" id="last-updated">-</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="bg-slate-800 rounded-lg p-4">
-                            <p class="text-slate-400 text-sm">24h Change</p>
-                            <p class="text-2xl font-bold" id="change-24h">0.00%</p>
+                        <div class="lg:w-2/5">
+                            <div class="h-40">
+                                <canvas id="asset-allocation-chart"></canvas>
+                            </div>
                         </div>
-                        <div class="bg-slate-800 rounded-lg p-4">
-                            <p class="text-slate-400 text-sm">Holdings</p>
-                            <p class="text-2xl font-bold" id="holdings-count">0</p>
-                        </div>
-                    </div>
-                    <div class="h-64">
-                        <canvas id="asset-allocation-chart"></canvas>
                     </div>
                 </div>
 
@@ -341,8 +373,53 @@
             return table;
         }
 
-        // Function to fetch and display holdings
-        async function fetchHoldings() {
+        // Function to calculate total values for each investment type
+        function calculateInvestmentTypeValues(holdings) {
+            let totalSpotValue = 0;
+            let totalMarginValue = 0;
+            let totalFuturesValue = 0;
+            let uniqueAssets = new Set();
+
+            // Calculate spot value and count unique assets
+            for (const [key, holding] of Object.entries(holdings.spot_holdings || {})) {
+                totalSpotValue += Number(holding.total_usd || 0);
+                // If this is a real asset with value, add to unique assets set
+                if (Number(holding.total_usd || 0) > 0) {
+                    const assetSymbol = key.split('_')[0];
+                    uniqueAssets.add(assetSymbol);
+                }
+            }
+
+            // Calculate margin value and count unique assets
+            for (const [key, holding] of Object.entries(holdings.margin_holdings || {})) {
+                totalMarginValue += Number(holding.net_asset_usd || 0);
+                // If this is a real asset with value, add to unique assets set
+                if (Number(holding.net_asset_usd || 0) > 0) {
+                    const assetSymbol = key.split('_')[0];
+                    uniqueAssets.add(assetSymbol);
+                }
+            }
+
+            // Calculate futures value and count unique assets
+            for (const [key, holding] of Object.entries(holdings.futures_holdings || {})) {
+                totalFuturesValue += Number(holding.usd_value || 0);
+                // If this is a real asset with value, add to unique assets set
+                if (Number(holding.usd_value || 0) > 0) {
+                    const assetSymbol = key.split('_')[0];
+                    uniqueAssets.add(assetSymbol);
+                }
+            }
+
+            return {
+                spotValue: totalSpotValue,
+                marginValue: totalMarginValue,
+                futuresValue: totalFuturesValue,
+                uniqueAssetCount: uniqueAssets.size
+            };
+        }
+
+        // Function to fetch and display portfolio data
+        async function fetchPortfolioData() {
             try {
                 const response = await fetch('/api/portfolio/holdings', {
                     method: 'POST',
@@ -358,6 +435,33 @@
                 const data = await response.json();
                 
                 if (data.status === 'success') {
+                    // Calculate values by investment type
+                    const { spotValue, marginValue, futuresValue, uniqueAssetCount } = calculateInvestmentTypeValues(data.data);
+                    
+                    // Calculate real total value by adding all holdings values
+                    const calculatedTotalValue = spotValue + marginValue + futuresValue;
+                    
+                    // Use the calculated total instead of the one from the API
+                    const totalValue = calculatedTotalValue || 0;
+                    const change24h = Number(data.data.change_24h) || 0;
+                    
+                    // Use the calculated unique asset count
+                    const holdingsCount = uniqueAssetCount || 0;
+                    
+                    // Update overview metrics
+                    document.getElementById('total-value').textContent = formatCurrency(totalValue);
+                    document.getElementById('change-24h').textContent = formatPercentage(change24h);
+                    document.getElementById('holdings-count').textContent = holdingsCount;
+                    
+                    // Update investment type values
+                    document.getElementById('spot-value').textContent = formatCurrency(spotValue);
+                    document.getElementById('margin-value').textContent = formatCurrency(marginValue);
+                    document.getElementById('futures-value').textContent = formatCurrency(futuresValue);
+                    
+                    // Update last updated timestamp
+                    const now = new Date();
+                    document.getElementById('last-updated').textContent = now.toLocaleTimeString();
+
                     // Update spot holdings
                     document.getElementById('spot-holdings').innerHTML = createHoldingsTable(data.data.spot_holdings);
                     
@@ -366,6 +470,9 @@
                     
                     // Update futures holdings
                     document.getElementById('futures-holdings').innerHTML = createHoldingsTable(data.data.futures_holdings);
+
+                    // Update chart with investment types
+                    updateInvestmentTypeChart(spotValue, marginValue, futuresValue);
                 } else {
                     throw new Error(data.data.message || 'Failed to fetch holdings');
                 }
@@ -377,8 +484,87 @@
             }
         }
 
+        // Update asset allocation chart with investment types
+        function updateInvestmentTypeChart(spotValue, marginValue, futuresValue) {
+            const ctx = document.getElementById('asset-allocation-chart').getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (window.assetAllocationChart) {
+                window.assetAllocationChart.destroy();
+            }
+            
+            // Create data for the chart
+            const labels = ['Spot', 'Margin', 'Futures'];
+            const data = [spotValue, marginValue, futuresValue];
+            
+            // Filter out zero values
+            const filteredLabels = [];
+            const filteredData = [];
+            for (let i = 0; i < labels.length; i++) {
+                if (data[i] > 0) {
+                    filteredLabels.push(labels[i]);
+                    filteredData.push(data[i]);
+                }
+            }
+            
+            // Calculate percentages
+            const total = filteredData.reduce((acc, val) => acc + Number(val), 0);
+            const percentages = filteredData.map(val => ((Number(val) / total) * 100).toFixed(2));
+            
+            // Create new chart
+            window.assetAllocationChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: filteredLabels,
+                    datasets: [{
+                        data: filteredData,
+                        backgroundColor: [
+                            '#3b82f6', // Blue for Spot
+                            '#10b981', // Green for Margin
+                            '#f59e0b'  // Orange for Futures
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: '#e2e8f0',
+                                font: {
+                                    family: "'Inter', sans-serif",
+                                    size: 12
+                                },
+                                boxWidth: 12,
+                                padding: 10
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = Number(context.raw) || 0;
+                                    const percentage = percentages[context.dataIndex];
+                                    return `${label}: ${formatCurrency(value)} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
         // Fetch holdings when page loads
-        document.addEventListener('DOMContentLoaded', fetchHoldings);
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchPortfolioData();
+            
+            // Refresh data every 30 seconds
+            setInterval(fetchPortfolioData, 30000);
+        });
 
         // Function to handle portfolio queries
         async function submitPortfolioQuery() {
@@ -447,76 +633,6 @@
             }
         }
 
-        // Update UI with portfolio data
-        function updatePortfolioUI(data) {
-            // Update overview
-            document.getElementById('total-value').textContent = formatCurrency(data.total_value);
-            document.getElementById('change-24h').textContent = formatPercentage(data.change_24h);
-            document.getElementById('holdings-count').textContent = data.holdings_count;
-            
-            // Update chart
-            updateAssetAllocationChart(data.asset_allocation);
-        }
-
-        // Update asset allocation chart
-        function updateAssetAllocationChart(assetAllocation) {
-            const ctx = document.getElementById('asset-allocation-chart').getContext('2d');
-            
-            // Destroy existing chart if it exists
-            if (window.assetAllocationChart) {
-                window.assetAllocationChart.destroy();
-            }
-            
-            // Create new chart
-            window.assetAllocationChart = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: assetAllocation.map(item => item.asset),
-                    datasets: [{
-                        data: assetAllocation.map(item => item.percentage),
-                        backgroundColor: [
-                            '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', 
-                            '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'
-                        ],
-                        borderWidth: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'right',
-                            labels: {
-                                color: '#e2e8f0',
-                                font: {
-                                    family: "'Inter', sans-serif"
-                                }
-                            }
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    const label = context.label || '';
-                                    const value = context.raw || 0;
-                                    return `${label}: ${value.toFixed(2)}%`;
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        // Format percentage
-        function formatPercentage(value) {
-            return new Intl.NumberFormat('en-US', {
-                style: 'percent',
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            }).format(value / 100);
-        }
-
         // Submit query to backend
         function submitQuery() {
             submitPortfolioQuery();
@@ -527,6 +643,25 @@
             if (e.key === 'Enter') {
                 submitQuery();
             }
+        });
+
+        // Format percentage
+        function formatPercentage(value) {
+            // Ensure value is a number and not NaN, use 0 as fallback
+            const numValue = Number(value) || 0;
+            return new Intl.NumberFormat('en-US', {
+                style: 'percent',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(numValue / 100);
+        }
+
+        // Handle form submission
+        document.getElementById('query-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            await handleQuery();
+            // Optionally refresh the holdings after a query
+            fetchPortfolioData();
         });
     </script>
 </body>
