@@ -1,111 +1,95 @@
-# Financial Advisor AI Agent
+# FinPilot Financial Advisor
 
-A comprehensive financial advisor AI system that uses LLMs, multiple specialized agents, and parallel processes to provide real-time cryptocurrency intelligence and advice.
+Your intelligent financial companion for portfolio analysis, market insights, and investment guidance.
 
-## Features
+## Project Structure
 
-- **Core LLM Agent/Orchestrator**: Central brain that understands user queries and delegates tasks
-- **Portfolio Agent**: Manages cryptocurrency portfolio tracking and Binance integration
-- **Query Agent**: Handles data analysis, visualization, and natural language queries
-- **Vector Store**: Stores and retrieves financial documents and knowledge
-- **SQLite Database**: Stores structured portfolio data and technical indicators
+This project consists of two main parts:
 
-## Setup
+1. **Backend (FastAPI)**: Provides the API endpoints and server-side intelligence
+2. **Frontend (React)**: Provides the user interface for interacting with the system
 
-1. Clone the repository
-2. Install dependencies:
+## Setup and Installation
+
+### Backend Setup
+
+1. Clone the repository:
 ```bash
+git clone https://github.com/yourusername/FinPilot-Financial_Advisor.git
+cd FinPilot-Financial_Advisor
+```
+
+2. Create a virtual environment and install dependencies:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows, use: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file with the following variables:
-```
-OPENAI_API_KEY=your_openai_api_key
-BINANCE_API_KEY=your_binance_api_key
-BINANCE_API_SECRET=your_binance_api_secret
-```
-
-4. Create necessary directories:
+3. Run the FastAPI backend:
 ```bash
-mkdir data
-mkdir chroma_db
+python app.py
 ```
 
-## Running the Application
+The backend will be available at http://localhost:8000 with API documentation at http://localhost:8000/api/docs.
 
-Start the FastAPI server:
+### Frontend Setup
+
+1. Navigate to the frontend directory:
 ```bash
-python main.py
+cd FinPilot-Frontend
 ```
 
-The server will start at `http://localhost:8000`
-
-## API Endpoints
-
-### Query Processing
-- `POST /query`: Process financial queries
-- `GET /portfolio/summary`: Get portfolio summary
-- `POST /documents/upload`: Upload financial documents
-- `GET /documents/search`: Search financial documents
-
-## Example Queries
-
-1. Portfolio Analysis:
-```json
-{
-    "query": "What's my average return in the last 6 months?",
-    "context": {}
-}
+2. Install dependencies:
+```bash
+npm install
 ```
 
-2. Technical Analysis:
-```json
-{
-    "query": "Show me technical indicators for BTC",
-    "context": {}
-}
+3. Start the development server:
+```bash
+npm start
 ```
 
-3. Market Data:
-```json
-{
-    "query": "What's the current price of ETH?",
-    "context": {}
-}
+The frontend will be available at http://localhost:3000.
+
+## Production Deployment
+
+For production deployment, you need to build the React frontend and configure the FastAPI backend to serve it:
+
+1. Build the React frontend:
+```bash
+cd FinPilot-Frontend
+npm run build
 ```
 
-## Features
+2. Make sure your backend is properly configured to serve the React build files:
+   - The FastAPI app is already configured to serve the React build if it exists at `FinPilot-Frontend/build`
+   - The app also has a catch-all route that will serve the React index.html for client-side routing
 
-### Portfolio Management
-- Real-time balance tracking
-- Transaction history
-- Portfolio performance analysis
-- Asset allocation visualization
+3. Start the FastAPI server which will now serve both the API and the React frontend:
+```bash
+python app.py
+```
 
-### Technical Analysis
-- RSI (Relative Strength Index)
-- MACD (Moving Average Convergence Divergence)
-- Bollinger Bands
-- Historical price data
+## Connecting Frontend to Backend
 
-### Data Analysis
-- Natural language queries
-- Document processing
-- Visualization tools
-- Market trend analysis
+- During development, the React app connects to the FastAPI backend using the environment variable `REACT_APP_API_URL` defined in `.env`
+- By default, this is set to `http://localhost:8000`, which is the default address of the FastAPI server
+- For production, you should modify this URL to match your deployment environment
 
-## Architecture
+## Available Features
 
-The system follows a hub-and-spoke model:
-1. Core LLM Agent acts as the orchestrator
-2. Specialized agents handle specific tasks
-3. Shared memory maintains context
-4. Vector store and SQLite database store knowledge and data
+- General Finance Queries: Ask any finance-related questions
+- Portfolio Analysis: Analyze your investment portfolio
+- Binance Portfolio Integration: Connect and analyze your Binance holdings
+- Kite Portfolio Integration: Connect and analyze your Kite holdings
 
-## Contributing
+## API Documentation
 
-Feel free to submit issues and enhancement requests.
+When the backend is running, you can access the API documentation at:
+- Swagger UI: http://localhost:8000/api/docs
+- ReDoc: http://localhost:8000/api/redoc
 
 ## License
 
-MIT License 
+[MIT License](LICENSE) 
