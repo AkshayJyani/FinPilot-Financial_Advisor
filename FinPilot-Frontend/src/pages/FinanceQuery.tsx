@@ -148,7 +148,7 @@ function FinanceQuery() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-blue-600">
-              Finance Query Box
+              Finance Hub
             </h1>
             <p className="text-slate-400 mt-1">
               Ask questions about your finances and get AI-powered insights

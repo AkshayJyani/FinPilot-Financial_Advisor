@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { BarChart3, ArrowLeft } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import ChatBox from '../components/ChatBox';
+import ApiService from '../services/apiService';
 
 function Portfolio() {
   const [binanceData, setBinanceData] = useState({
@@ -12,19 +12,54 @@ function Portfolio() {
     total_value: 0,
     change_24h: 0
   });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Simulate fetching Binance data
-    setBinanceData({
-      total_value: 34567.89,
-      change_24h: 2.5
-    });
+    const fetchData = async () => {
+      setIsLoading(true);
+      setError(null);
 
-    // Simulate fetching Kite data
-    setKiteData({
-      total_value: 12345.67,
-      change_24h: -0.75
-    });
+      try {
+        // Fetch Binance data from API
+        const binanceResponse = await ApiService.getBinanceHoldings();
+        if (binanceResponse.status === 'success' && binanceResponse.data) {
+          // Calculate total value either from API or calculate from holdings if needed
+          let totalValue = binanceResponse.data.total_value || 0;
+          const spotValue = binanceResponse.data.spot_value || 0;
+          const marginValue = binanceResponse.data.margin_value || 0;
+          const futuresValue = binanceResponse.data.futures_value || 0;
+          
+          // If total_value is not provided, calculate it from components
+          if (totalValue === 0 && (spotValue > 0 || marginValue > 0 || futuresValue > 0)) {
+            totalValue = spotValue + marginValue + futuresValue;
+          }
+
+          setBinanceData({
+            total_value: totalValue,
+            change_24h: binanceResponse.data.change_24h || 0
+          });
+        } else {
+          console.error('Failed to fetch Binance data:', binanceResponse);
+          if (binanceResponse.status === 'error') {
+            setError(binanceResponse.data.message || 'Failed to load Binance portfolio');
+          }
+        }
+
+        // Simulate fetching Kite data (keeping this as is for now)
+        setKiteData({
+          total_value: 12345.67,
+          change_24h: -0.75
+        });
+      } catch (err) {
+        console.error('Error fetching portfolio data:', err);
+        setError('Failed to load portfolio data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
 
   // Format currency values
@@ -46,6 +81,10 @@ function Portfolio() {
     }).format(value / 100);
   };
 
+  // Calculate total portfolio value
+  const totalPortfolioValue = binanceData.total_value + kiteData.total_value;
+  const totalPortfolioPercentage = ((binanceData.change_24h * binanceData.total_value + kiteData.change_24h * kiteData.total_value) / totalPortfolioValue);
+
   return (
     <div className="container mx-auto px-4 py-8">
       <header className="mb-8">
@@ -63,6 +102,37 @@ function Portfolio() {
           </Link>
         </div>
       </header>
+
+      {/* Portfolio Overview Card */}
+      <div className="bg-slate-800/50 backdrop-blur-md border border-slate-700/30 rounded-xl p-6 mb-8">
+        <h2 className="text-2xl font-semibold mb-4">Portfolio Overview</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-800 rounded-lg p-4">
+            <p className="text-slate-400 text-sm">Total Portfolio Value</p>
+            <p className="text-2xl font-bold">{formatCurrency(totalPortfolioValue)}</p>
+          </div>
+          <div className="bg-slate-800 rounded-lg p-4">
+            <p className="text-slate-400 text-sm">24h Change</p>
+            <p className={`text-2xl font-bold ${totalPortfolioPercentage >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {formatPercentage(totalPortfolioPercentage)}
+            </p>
+          </div>
+          <div className="bg-slate-800 rounded-lg p-4">
+            <p className="text-slate-400 text-sm">Active Investments</p>
+            <p className="text-2xl font-bold">2</p>
+          </div>
+        </div>
+        {error && (
+          <div className="mt-4 text-red-500 bg-red-900/20 rounded p-2">
+            {error}
+          </div>
+        )}
+        {isLoading && (
+          <div className="mt-4 text-blue-400">
+            Loading portfolio data...
+          </div>
+        )}
+      </div>
 
       {/* Portfolio Selection Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -123,20 +193,6 @@ function Portfolio() {
             Monitor your stock market investments and trading positions
           </p>
         </Link>
-      </div>
-
-      {/* Chat Box Section */}
-      <div className="mt-12">
-        <div className="bg-slate-800/50 backdrop-blur-md border border-slate-700/30 rounded-xl p-6">
-          <h2 className="text-xl font-semibold mb-4 border-l-4 border-blue-500 pl-3">Portfolio Query</h2>
-          <p className="text-slate-400 text-sm mb-4">
-            Ask questions about your portfolio and get instant insights.
-          </p>
-          <ChatBox 
-            initialMessage="Hello! I can help you analyze your portfolio. What would you like to know?"
-            placeholder="Ask about your portfolio..."
-          />
-        </div>
       </div>
     </div>
   );

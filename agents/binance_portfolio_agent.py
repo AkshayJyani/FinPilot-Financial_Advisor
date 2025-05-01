@@ -16,6 +16,10 @@ from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.core.response_synthesizers import get_response_synthesizer
 from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.retrievers import VectorIndexRetriever
+import requests
+import hmac
+import hashlib
+import time
 
 load_dotenv()
 
@@ -158,6 +162,86 @@ class PortfolioAgent(BaseTool):
             print(f"Error updating portfolio data: {e}")
             return False
     
+    def _fetch_buy_trades(self, symbol: str) -> Dict[str, Any]:
+        """Fetch buy trades for a specific symbol to determine average buy price"""
+        try:
+            # Format the symbol for API call if needed
+            trading_pair = symbol
+            if not symbol.endswith('USDT'):
+                trading_pair = f"{symbol}USDT"
+                
+            # Define query parameters
+            timestamp = int(time.time() * 1000)
+            query_string = f"symbol={trading_pair}&timestamp={timestamp}"
+            
+            # Generate signature
+            signature = hmac.new(
+                self.api_secret.encode(), 
+                query_string.encode(), 
+                hashlib.sha256
+            ).hexdigest()
+            
+            # Define headers and URL
+            headers = {'X-MBX-APIKEY': self.api_key}
+            url = f"https://api.binance.com/api/v3/myTrades?{query_string}&signature={signature}"
+            
+            # Make API request
+            print(f"Fetching trade history for {trading_pair}")
+            response = requests.get(url, headers=headers)
+            
+            if response.status_code == 200:
+                trades = response.json()
+                
+                # Filter for buy trades only
+                buy_trades = [t for t in trades if t.get('isBuyer', False)]
+                
+                if not buy_trades:
+                    print(f"No buy trades found for {trading_pair}")
+                    return {
+                        'avg_buy_price': None,
+                        'first_buy_time': None,
+                        'last_buy_time': None,
+                        'total_qty_bought': 0
+                    }
+                
+                # Calculate total quantity and cost
+                total_qty = sum(float(t['qty']) for t in buy_trades)
+                total_cost = sum(float(t['qty']) * float(t['price']) for t in buy_trades)
+                
+                # Calculate average buy price
+                avg_buy_price = total_cost / total_qty if total_qty > 0 else 0
+                
+                # Get first and last buy times
+                buy_times = [int(t['time']) for t in buy_trades]
+                first_buy_time = min(buy_times) if buy_times else None
+                last_buy_time = max(buy_times) if buy_times else None
+                
+                print(f"Calculated average buy price for {trading_pair}: {avg_buy_price}")
+                
+                return {
+                    'avg_buy_price': avg_buy_price,
+                    'first_buy_time': first_buy_time,
+                    'last_buy_time': last_buy_time,
+                    'total_qty_bought': total_qty
+                }
+            else:
+                print(f"Error fetching trades for {trading_pair}: {response.text}")
+                return {
+                    'avg_buy_price': None,
+                    'first_buy_time': None,
+                    'last_buy_time': None,
+                    'total_qty_bought': 0
+                }
+                
+        except Exception as e:
+            print(f"Error in _fetch_buy_trades for {symbol}: {e}")
+            return {
+                'avg_buy_price': None,
+                'first_buy_time': None,
+                'last_buy_time': None,
+                'total_qty_bought': 0
+            }
+
     def _fetch_spot_holdings(self) -> Dict[str, Dict[str, Any]]:
         """Fetch spot trading holdings"""
         try:
@@ -188,13 +272,29 @@ class PortfolioAgent(BaseTool):
                     total = free + locked
                     usd_value = total * price_usd
                     
+                    # Get buy price information
+                    buy_data = self._fetch_buy_trades(balance['asset'])
+                    avg_buy_price = buy_data.get('avg_buy_price')
+                    
+                    # Calculate PNL if buy price is available
+                    pnl = None
+                    pnl_percentage = None
+                    if avg_buy_price is not None and avg_buy_price > 0:
+                        pnl = (price_usd - avg_buy_price) * total
+                        pnl_percentage = ((price_usd / avg_buy_price) - 1) * 100
+                    
                     holdings[balance['asset']] = {
                         'free': free,
                         'locked': locked,
                         'total': total,
                         'total_usd': usd_value,
                         'type': InvestmentType.SPOT,
-                        'price_usd': price_usd
+                        'price_usd': price_usd,
+                        'avg_buy_price': avg_buy_price,
+                        'pnl': pnl,
+                        'pnl_percentage': pnl_percentage,
+                        'first_buy_time': buy_data.get('first_buy_time'),
+                        'last_buy_time': buy_data.get('last_buy_time')
                     }
             return holdings
         except BinanceAPIException as e:
@@ -229,12 +329,28 @@ class PortfolioAgent(BaseTool):
                     net_asset = float(asset['netAsset'])
                     usd_value = net_asset * price_usd
                     
+                    # Get buy price information
+                    buy_data = self._fetch_buy_trades(asset['asset'])
+                    avg_buy_price = buy_data.get('avg_buy_price')
+                    
+                    # Calculate PNL if buy price is available
+                    pnl = None
+                    pnl_percentage = None
+                    if avg_buy_price is not None and avg_buy_price > 0:
+                        pnl = (price_usd - avg_buy_price) * net_asset
+                        pnl_percentage = ((price_usd / avg_buy_price) - 1) * 100
+                    
                     holdings[asset['asset']] = {
                         'net_asset': net_asset,
                         'net_asset_usd': usd_value,
                         'borrowed': float(asset['borrowed']),
                         'type': InvestmentType.SPOT_CROSS_MARGIN,
-                        'price_usd': price_usd
+                        'price_usd': price_usd,
+                        'avg_buy_price': avg_buy_price,
+                        'pnl': pnl,
+                        'pnl_percentage': pnl_percentage,
+                        'first_buy_time': buy_data.get('first_buy_time'),
+                        'last_buy_time': buy_data.get('last_buy_time')
                     }
             return holdings
         except BinanceAPIException as e:
@@ -281,6 +397,56 @@ class PortfolioAgent(BaseTool):
             print(f"Error fetching futures holdings: {e}")
             return {}
     
+    def _fetch_24hr_changes(self, symbols: List[str] = None) -> Dict[str, Dict[str, float]]:
+        """Fetch 24-hour price changes for given symbols"""
+        try:
+            if not symbols:
+                return {}
+                
+            changes_data = {}
+            
+            for symbol in symbols:
+                # Remove any suffix like _spot or _margin to get the base symbol
+                base_symbol = symbol.split('_')[0] if '_' in symbol else symbol
+                
+                # Skip USDT as it's the quote currency
+                if base_symbol == 'USDT':
+                    continue
+                    
+                # Format the symbol for the API call
+                # If the symbol already contains USDT (like BTCUSDT), use it directly
+                if 'USDT' in base_symbol:
+                    trading_pair = base_symbol
+                else:
+                    trading_pair = f"{base_symbol}USDT"
+                
+                try:
+                    # Call the 24hr ticker endpoint
+                    url = f'https://api.binance.com/api/v3/ticker/24hr?symbol={trading_pair}'
+                    print(f"Calling Binance API: {url}")
+                    response = requests.get(url)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        # Store the data under the base symbol without USDT suffix
+                        store_symbol = base_symbol.replace('USDT', '')
+                        changes_data[store_symbol] = {
+                            'priceChange': float(data['priceChange']),
+                            'priceChangePercent': float(data['priceChangePercent']),
+                            'lastPrice': float(data['lastPrice']),
+                            'volume': float(data['volume']),
+                            'quoteVolume': float(data['quoteVolume'])
+                        }
+                        print(f"Got change data for {store_symbol}: {changes_data[store_symbol]['priceChangePercent']}%")
+                except Exception as e:
+                    print(f"Error fetching 24hr change for {trading_pair}: {e}")
+                    # If we can't get the data, we'll just skip this symbol
+            
+            return changes_data
+        except Exception as e:
+            print(f"Error fetching 24hr changes: {e}")
+            return {}
+    
     def _fetch_holdings(self) -> Dict[str, Dict[str, Any]]:
         """Fetch all holdings from different account types"""
         try:
@@ -298,7 +464,13 @@ class PortfolioAgent(BaseTool):
                         "total": 0.5,
                         "total_usd": 25000.0,
                         "type": "spot",
-                        "price_usd": 50000.0
+                        "price_usd": 50000.0,
+                        "change_24h": 2.5,  # 24h change
+                        "avg_buy_price": 45000.0,  # Average buy price
+                        "pnl": 2500.0,  # Profit/Loss in USD
+                        "pnl_percentage": 11.11,  # Percentage gain/loss
+                        "first_buy_time": 1609459200000,  # Example timestamp
+                        "last_buy_time": 1625097600000  # Example timestamp
                     },
                     "ETH_spot": {
                         "free": 2.0,
@@ -306,7 +478,13 @@ class PortfolioAgent(BaseTool):
                         "total": 2.0,
                         "total_usd": 4000.0,
                         "type": "spot",
-                        "price_usd": 2000.0
+                        "price_usd": 2000.0,
+                        "change_24h": 1.8,  # 24h change
+                        "avg_buy_price": 1800.0,  # Average buy price
+                        "pnl": 400.0,  # Profit/Loss in USD
+                        "pnl_percentage": 11.11,  # Percentage gain/loss
+                        "first_buy_time": 1609459200000,  # Example timestamp
+                        "last_buy_time": 1625097600000  # Example timestamp
                     },
                     # Cross Margin Holdings
                     "BNB_margin": {
@@ -314,16 +492,28 @@ class PortfolioAgent(BaseTool):
                         "net_asset_usd": 5000.0,
                         "borrowed": 0.0,
                         "type": "spot_cross_margin",
-                        "price_usd": 500.0
+                        "price_usd": 500.0,
+                        "change_24h": -0.5,  # 24h change
+                        "avg_buy_price": 450.0,  # Average buy price
+                        "pnl": 500.0,  # Profit/Loss in USD
+                        "pnl_percentage": 11.11,  # Percentage gain/loss
+                        "first_buy_time": 1609459200000,  # Example timestamp
+                        "last_buy_time": 1625097600000  # Example timestamp
                     },
                     "ADA_margin": {
                         "net_asset": 1000.0,
                         "net_asset_usd": 3000.0,
                         "borrowed": 0.0,
                         "type": "spot_cross_margin",
-                        "price_usd": 3.0
+                        "price_usd": 3.0,
+                        "change_24h": 3.2,  # 24h change
+                        "avg_buy_price": 2.5,  # Average buy price
+                        "pnl": 500.0,  # Profit/Loss in USD
+                        "pnl_percentage": 20.0,  # Percentage gain/loss
+                        "first_buy_time": 1609459200000,  # Example timestamp
+                        "last_buy_time": 1625097600000  # Example timestamp
                     },
-                    # Futures Holdings
+                    # Futures Holdings already have entry price, so no need to add avg_buy_price
                     "SOL_futures": {
                         "amount": 100.0,
                         "entry_price": 100.0,
@@ -332,7 +522,8 @@ class PortfolioAgent(BaseTool):
                         "unrealized_pnl_usd": 2000.0,
                         "leverage": 5,
                         "usd_value": 12000.0,
-                        "type": "futures"
+                        "type": "futures",
+                        "change_24h": 5.8
                     },
                     "DOT_futures": {
                         "amount": 50.0,
@@ -342,7 +533,8 @@ class PortfolioAgent(BaseTool):
                         "unrealized_pnl_usd": 250.0,
                         "leverage": 3,
                         "usd_value": 1250.0,
-                        "type": "futures"
+                        "type": "futures",
+                        "change_24h": -1.2
                     }
                 }
                 return holdings
@@ -352,16 +544,47 @@ class PortfolioAgent(BaseTool):
             margin_holdings = self._fetch_margin_holdings()
             futures_holdings = self._fetch_futures_holdings()
             
-            # Add spot holdings with unique keys
+            # Get all symbols for 24hr changes
+            all_symbols = set()
+            for symbol in list(spot_holdings.keys()) + list(margin_holdings.keys()) + list(futures_holdings.keys()):
+                # Extract the base symbol without any suffix
+                base_symbol = symbol.split('_')[0] if '_' in symbol else symbol
+                all_symbols.add(base_symbol)
+            
+            # Fetch 24hr changes for all symbols
+            changes_data = self._fetch_24hr_changes(list(all_symbols))
+            
+            # Add spot holdings with unique keys and 24hr change
             for symbol, data in spot_holdings.items():
+                # Extract base symbol for 24hr data
+                base_symbol = symbol.split('_')[0] if '_' in symbol else symbol
+                
+                # Add 24hr change if available
+                if base_symbol in changes_data:
+                    data['change_24h'] = changes_data[base_symbol]['priceChangePercent']
+                
                 holdings[f"{symbol}_spot"] = data
             
-            # Add margin holdings with unique keys
+            # Add margin holdings with unique keys and 24hr change
             for symbol, data in margin_holdings.items():
+                # Extract base symbol for 24hr data
+                base_symbol = symbol.split('_')[0] if '_' in symbol else symbol
+                
+                # Add 24hr change if available
+                if base_symbol in changes_data:
+                    data['change_24h'] = changes_data[base_symbol]['priceChangePercent']
+                
                 holdings[f"{symbol}_margin"] = data
             
-            # Add futures holdings with unique keys
+            # Add futures holdings with unique keys and 24hr change
             for symbol, data in futures_holdings.items():
+                # Extract base symbol for 24hr data
+                base_symbol = symbol.split('_')[0] if '_' in symbol else symbol
+                
+                # Add 24hr change if available
+                if base_symbol in changes_data:
+                    data['change_24h'] = changes_data[base_symbol]['priceChangePercent']
+                
                 holdings[f"{symbol}_futures"] = data
             
             return holdings
@@ -929,6 +1152,11 @@ class PortfolioAgent(BaseTool):
             # Fetch holdings
             holdings = self._fetch_holdings()
             
+            # Log the holdings data to see if change_24h is included
+            print("Fetched holdings data:")
+            for symbol, data in holdings.items():
+                print(f"{symbol}: change_24h = {data.get('change_24h')}")
+            
             # Calculate total value and holdings count
             total_value = 0
             holdings_count = 0
@@ -936,8 +1164,36 @@ class PortfolioAgent(BaseTool):
             margin_holdings = {}
             futures_holdings = {}
             
+            # Fetch 24hr changes for all symbols if not already present
+            all_symbols = set()
+            for symbol in holdings.keys():
+                # Extract the base symbol without any suffix
+                base_symbol = symbol.split('_')[0] if '_' in symbol else symbol
+                # Remove USDT suffix if present (for futures symbols)
+                base_symbol = base_symbol.replace('USDT', '')
+                all_symbols.add(base_symbol)
+            
+            # Only fetch if we have symbols and change_24h is missing from any holding
+            should_fetch_changes = any('change_24h' not in data for data in holdings.values())
+            changes_data = {}
+            if all_symbols and should_fetch_changes:
+                print(f"Fetching 24hr changes for symbols: {list(all_symbols)}")
+                changes_data = self._fetch_24hr_changes(list(all_symbols))
+                print(f"Fetched changes data: {changes_data}")
+            
             # Organize holdings by type
             for symbol, data in holdings.items():
+                # Add change_24h if missing and we have the data
+                if 'change_24h' not in data and changes_data:
+                    # Extract base symbol for 24hr data
+                    base_symbol = symbol.split('_')[0] if '_' in symbol else symbol
+                    base_symbol = base_symbol.replace('USDT', '')
+                    
+                    # Add 24hr change if available
+                    if base_symbol in changes_data:
+                        data['change_24h'] = changes_data[base_symbol]['priceChangePercent']
+                        print(f"Added change_24h to {symbol}: {data['change_24h']}")
+                
                 if data.get("type") == InvestmentType.SPOT:
                     spot_holdings[symbol] = data
                     total_value += data.get('total_usd', 0)
@@ -981,6 +1237,12 @@ class PortfolioAgent(BaseTool):
             
             # Calculate weighted average change
             change_24h = total_change / total_weight if total_weight > 0 else 0
+            
+            # Log the final holdings with change_24h
+            print("Final holdings data:")
+            for category, holdings_data in [("spot", spot_holdings), ("margin", margin_holdings), ("futures", futures_holdings)]:
+                for symbol, data in holdings_data.items():
+                    print(f"{category} - {symbol}: change_24h = {data.get('change_24h')}")
             
             # Calculate asset allocation
             asset_allocation = []
