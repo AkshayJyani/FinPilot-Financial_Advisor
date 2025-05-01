@@ -45,10 +45,13 @@ app = FastAPI(
     redoc_url="/api/redoc",
 )
 
-# Add CORS middleware
+# Define your frontend URL - change this based on your React app's URL
+FRONTEND_URL = "http://localhost:3000"  # Typical React development server port
+
+# Add CORS middleware with specific origin for React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[FRONTEND_URL, "*"],  # Allow your React app and others during development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -67,6 +70,11 @@ static_dir = Path("static")
 if static_dir.exists() and static_dir.is_dir():
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Try to mount the React build folder if it exists
+react_build_dir = Path("FinPilot-Frontend/build")
+if react_build_dir.exists() and react_build_dir.is_dir():
+    app.mount("/", StaticFiles(directory=str(react_build_dir), html=True), name="react_app")
+
 # Helper functions
 def create_response(status: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """Create a standardized response format"""
@@ -76,50 +84,39 @@ def create_response(status: str, data: Dict[str, Any]) -> Dict[str, Any]:
 # ---- WEB UI ROUTES ---- #
 #############################
 
-@app.get("/", response_class=HTMLResponse, tags=["UI"])
+# These routes are kept for backward compatibility with the template-based UI
+@app.get("/old", response_class=HTMLResponse, tags=["UI"])
 async def read_root(request: Request):
     """Home page"""
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.get("/portfolio", response_class=HTMLResponse, tags=["UI"])
+@app.get("/old/portfolio", response_class=HTMLResponse, tags=["UI"])
 async def portfolio_page(request: Request):
     """Portfolio analysis page"""
     return templates.TemplateResponse("portfolio.html", {"request": request})
 
-@app.get("/query", response_class=HTMLResponse, tags=["UI"])
+@app.get("/old/query", response_class=HTMLResponse, tags=["UI"])
 async def query_page(request: Request):
     """Query page"""
     return templates.TemplateResponse("query.html", {"request": request})
 
-@app.get("/kite-portfolio", response_class=HTMLResponse, tags=["UI"])
+@app.get("/old/kite-portfolio", response_class=HTMLResponse, tags=["UI"])
 async def kite_portfolio_dash(request: Request):
     """Kite portfolio page with dash format"""
     return templates.TemplateResponse("kite_portfolio.html", {"request": request})
 
-@app.get("/kite_portfolio", response_class=HTMLResponse, tags=["UI"])
-async def kite_portfolio_underscore(request: Request):
-    """Kite portfolio page with underscore format"""
-    return templates.TemplateResponse("kite_portfolio.html", {"request": request})
 
-@app.get("/binance-portfolio", response_class=HTMLResponse, tags=["UI"])
+@app.get("/old/binance-portfolio", response_class=HTMLResponse, tags=["UI"])
 async def binance_portfolio_dash(request: Request):
     """Binance portfolio page with dash format"""
     return templates.TemplateResponse("binance_portfolio.html", {"request": request})
 
-@app.get("/binance_portfolio", response_class=HTMLResponse, tags=["UI"])
-async def binance_portfolio_underscore(request: Request):
-    """Binance portfolio page with underscore format"""
-    return templates.TemplateResponse("binance_portfolio.html", {"request": request})
 
-@app.get("/finance-query", response_class=HTMLResponse, tags=["UI"])
+@app.get("/old/finance-query", response_class=HTMLResponse, tags=["UI"])
 async def finance_query_dash(request: Request):
     """Finance query page with dash format"""
     return templates.TemplateResponse("finance_query.html", {"request": request})
 
-@app.get("/finance_query", response_class=HTMLResponse, tags=["UI"])
-async def finance_query_underscore(request: Request):
-    """Finance query page with underscore format"""
-    return templates.TemplateResponse("finance_query.html", {"request": request})
 
 ##############################
 # ---- API ROUTES ---- #
@@ -241,6 +238,26 @@ async def version_info():
         "version": "1.0.0",
         "environment": os.getenv("ENVIRONMENT", "development")
     })
+
+# Route to handle React routing - this allows React Router to handle routes
+@app.get("/{full_path:path}", response_class=HTMLResponse, include_in_schema=False)
+async def serve_react_app(full_path: str):
+    """
+    Catch-all route to support React Router
+    
+    Returns the React index.html for all non-api routes
+    """
+    # Check if the request is for an API route
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="API route not found")
+    
+    # Check if React build folder exists
+    react_index = Path("FinPilot-Frontend/build/index.html")
+    if react_index.exists():
+        return FileResponse(str(react_index))
+    
+    # Fallback to templates
+    return FileResponse("templates/index.html")
 
 if __name__ == "__main__":
     import uvicorn

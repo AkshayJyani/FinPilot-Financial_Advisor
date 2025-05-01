@@ -126,7 +126,7 @@
             <div class="flex justify-between items-center">
                 <div>
                     <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-blue-600">
-                        BINANCE PORTFOLIO ANALYSIS
+                        PORTFOLIO ANALYSIS
                     </h1>
                     <p class="text-slate-400 mt-1">
                         Analyze your Binance portfolio with detailed insights
@@ -421,7 +421,7 @@
         // Function to fetch and display portfolio data
         async function fetchPortfolioData() {
             try {
-                const response = await fetch('/api/portfolio/holdings', {
+                const response = await fetch('/api/binance/portfolio/holdings', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
