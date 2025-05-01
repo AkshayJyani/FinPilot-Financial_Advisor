@@ -37,12 +37,18 @@ interface Holding {
   price_usd: number;
   total_usd: number;
   change_24h?: number;
+  avg_buy_price?: number;
+  pnl?: number;
+  pnl_percentage?: number;
+  first_buy_time?: number;
+  last_buy_time?: number;
 }
 
 interface AssetAllocation {
   asset: string;
   percentage: number;
   value: number;
+  sector?: string;
 }
 
 interface PortfolioData {
@@ -53,7 +59,11 @@ interface PortfolioData {
   margin_value: number;
   futures_value: number;
   asset_allocation?: AssetAllocation[];
+  sector_allocation?: AssetAllocation[];
   last_updated: string;
+  spotCoinsCount?: number;
+  marginCoinsCount?: number;
+  futuresCoinsCount?: number;
 }
 
 // Define interfaces for API response data types
@@ -64,6 +74,12 @@ interface SpotHoldingData {
   total_usd: number;
   type: string;
   price_usd: number;
+  change_24h?: number;
+  avg_buy_price?: number;
+  pnl?: number;
+  pnl_percentage?: number;
+  first_buy_time?: number;
+  last_buy_time?: number;
   [key: string]: any;
 }
 
@@ -73,6 +89,12 @@ interface MarginHoldingData {
   borrowed: number;
   type: string;
   price_usd: number;
+  change_24h?: number;
+  avg_buy_price?: number;
+  pnl?: number;
+  pnl_percentage?: number;
+  first_buy_time?: number;
+  last_buy_time?: number;
   [key: string]: any;
 }
 
@@ -85,6 +107,12 @@ interface FuturesHoldingData {
   leverage: number;
   usd_value: number;
   type: string;
+  change_24h?: number;
+  avg_buy_price?: number;
+  pnl?: number;
+  pnl_percentage?: number;
+  first_buy_time?: number;
+  last_buy_time?: number;
   [key: string]: any;
 }
 
@@ -119,6 +147,53 @@ function BinancePortfolio() {
   const [isLoading, setIsLoading] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'spot' | 'margin' | 'futures'>('spot');
+
+  // Cache management
+  const loadCachedData = () => {
+    try {
+      // Try to get cached portfolio data from localStorage
+      const cachedDataStr = localStorage.getItem('binance_portfolio_data');
+      const cachedSpotStr = localStorage.getItem('binance_spot_holdings');
+      const cachedMarginStr = localStorage.getItem('binance_margin_holdings');
+      const cachedFuturesStr = localStorage.getItem('binance_futures_holdings');
+      
+      console.log('Loading cached data');
+      
+      // Parse and set portfolio data if available
+      if (cachedDataStr) {
+        const cachedData = JSON.parse(cachedDataStr) as PortfolioData;
+        // Add a note that this is cached data
+        cachedData.last_updated = `${new Date(cachedData.last_updated).toLocaleTimeString()} (cached)`;
+        setPortfolioData(cachedData);
+        console.log('Loaded cached portfolio data');
+      }
+      
+      // Parse and set holdings data if available
+      if (cachedSpotStr) setSpotHoldings(JSON.parse(cachedSpotStr));
+      if (cachedMarginStr) setMarginHoldings(JSON.parse(cachedMarginStr));
+      if (cachedFuturesStr) setFuturesHoldings(JSON.parse(cachedFuturesStr));
+      
+      // Return true if we loaded any cached data
+      return !!(cachedDataStr || cachedSpotStr || cachedMarginStr || cachedFuturesStr);
+    } catch (error) {
+      console.error('Error loading cached data:', error);
+      return false;
+    }
+  };
+  
+  const saveDataToCache = (data: PortfolioData, spot: Holding[], margin: Holding[], futures: Holding[]) => {
+    try {
+      localStorage.setItem('binance_portfolio_data', JSON.stringify(data));
+      localStorage.setItem('binance_spot_holdings', JSON.stringify(spot));
+      localStorage.setItem('binance_margin_holdings', JSON.stringify(margin));
+      localStorage.setItem('binance_futures_holdings', JSON.stringify(futures));
+      console.log('Saved portfolio data to cache');
+    } catch (error) {
+      console.error('Error saving data to cache:', error);
+    }
+  };
 
   // Add custom CSS for the component
   useEffect(() => {
@@ -184,9 +259,76 @@ function BinancePortfolio() {
     }).format(value / 100);
   };
 
+  // Format timestamps
+  const formatTimestamp = (timestamp?: number) => {
+    if (!timestamp) return '-';
+    
+    // Convert milliseconds timestamp to Date object
+    const date = new Date(timestamp);
+    
+    // Format as local date string
+    return date.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  // Add a function to map crypto assets to sectors
+  const mapAssetToSector = (asset: string): string => {
+    // This is a simple mapping - in a real app, you might want to fetch this data from an API
+    const sectorMap: {[key: string]: string} = {
+      'BTC': 'Store of Value',
+      'ETH': 'Smart Contract Platform',
+      'BNB': 'Exchange Token',
+      'SOL': 'Smart Contract Platform',
+      'ADA': 'Smart Contract Platform',
+      'DOT': 'Interoperability',
+      'AVAX': 'Smart Contract Platform',
+      'LINK': 'Oracle',
+      'UNI': 'DeFi',
+      'AAVE': 'DeFi',
+      'COMP': 'DeFi',
+      'MKR': 'DeFi',
+      'SUSHI': 'DeFi',
+      'CAKE': 'DeFi',
+      'MATIC': 'Layer 2',
+      'LTC': 'Payments',
+      'XLM': 'Payments',
+      'XRP': 'Payments',
+      'DOGE': 'Meme',
+      'SHIB': 'Meme',
+      'FTT': 'Exchange Token',
+      'CRO': 'Exchange Token',
+      'FTM': 'Smart Contract Platform',
+      'ATOM': 'Interoperability',
+      'ALGO': 'Smart Contract Platform',
+      'NEAR': 'Smart Contract Platform',
+      'ICP': 'Internet Services',
+      'FIL': 'Storage',
+      'XTZ': 'Smart Contract Platform',
+      'AXS': 'Gaming',
+      'MANA': 'Metaverse',
+      'SAND': 'Metaverse',
+      'ENJ': 'Gaming',
+      'THETA': 'Media',
+      'CHZ': 'Sports',
+      'BAT': 'Advertising',
+      'XMR': 'Privacy',
+      'ZEC': 'Privacy',
+      'DASH': 'Privacy',
+    };
+    
+    return sectorMap[asset] || 'Other';
+  };
+
   // Fetch portfolio data
-  const fetchPortfolioData = async () => {
-    setIsLoading(true);
+  const fetchPortfolioData = async (isBackgroundRefresh = false) => {
+    if (isBackgroundRefresh) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
     setError(null);
     
     try {
@@ -210,10 +352,20 @@ function BinancePortfolio() {
           let uniqueAssets = new Set<string>();
           let assetValues = new Map<string, number>();
           
+          // For calculating weighted average of 24h changes
+          let totalWeightedChange = 0;
+          let totalValueWithChange = 0;
+          
+          // Count the number of coins in each sector
+          let spotCoinsCount = 0;
+          let marginCoinsCount = 0;
+          let futuresCoinsCount = 0;
+          
           // Process spot holdings (object structure)
           const processedSpotHoldings: Holding[] = [];
           if (data.spot_holdings && typeof data.spot_holdings === 'object') {
             console.log('Processing spot holdings:', Object.keys(data.spot_holdings).length, 'items');
+            spotCoinsCount = Object.keys(data.spot_holdings).length;
             Object.entries(data.spot_holdings).forEach(([key, holding]) => {
               if (holding && typeof holding === 'object') {
                 // Extract asset symbol from the key (e.g., "BTC_spot" -> "BTC")
@@ -222,8 +374,9 @@ function BinancePortfolio() {
                 const amount = Number(spotHolding.total) || 0;
                 const price_usd = Number(spotHolding.price_usd) || 0;
                 const total_usd = Number(spotHolding.total_usd) || amount * price_usd;
+                const change_24h = spotHolding.change_24h !== undefined ? Number(spotHolding.change_24h) : undefined;
                 
-                console.log(`Processing spot holding: ${symbol}, amount: ${amount}, price: ${price_usd}, total: ${total_usd}`);
+                console.log(`Processing spot holding: ${symbol}, amount: ${amount}, price: ${price_usd}, total: ${total_usd}, change_24h: ${change_24h !== undefined ? change_24h + '%' : 'undefined'}`);
                 
                 if (amount > 0 && isFinite(amount) && isFinite(price_usd) && total_usd > 0) {
                   totalSpotValue += total_usd;
@@ -233,12 +386,23 @@ function BinancePortfolio() {
                   const currentValue = assetValues.get(symbol) || 0;
                   assetValues.set(symbol, currentValue + total_usd);
                   
+                  // Calculate weighted 24h change
+                  if (change_24h !== undefined && isFinite(change_24h)) {
+                    totalWeightedChange += change_24h * total_usd;
+                    totalValueWithChange += total_usd;
+                  }
+                  
                   processedSpotHoldings.push({
                     symbol: symbol,
                     amount: amount,
                     price_usd: price_usd,
                     total_usd: total_usd,
-                    change_24h: undefined // Change data might not be available
+                    change_24h: change_24h, // Use the 24h change from API
+                    avg_buy_price: spotHolding.avg_buy_price,
+                    pnl: spotHolding.pnl,
+                    pnl_percentage: spotHolding.pnl_percentage,
+                    first_buy_time: spotHolding.first_buy_time,
+                    last_buy_time: spotHolding.last_buy_time
                   });
                 }
               }
@@ -250,6 +414,7 @@ function BinancePortfolio() {
           const processedMarginHoldings: Holding[] = [];
           if (data.margin_holdings && typeof data.margin_holdings === 'object') {
             console.log('Processing margin holdings:', Object.keys(data.margin_holdings).length, 'items');
+            marginCoinsCount = Object.keys(data.margin_holdings).length;
             Object.entries(data.margin_holdings).forEach(([key, holding]) => {
               if (holding && typeof holding === 'object') {
                 // Extract asset symbol from the key (e.g., "BTC_margin" -> "BTC")
@@ -258,8 +423,9 @@ function BinancePortfolio() {
                 const amount = Number(marginHolding.net_asset) || 0;
                 const price_usd = Number(marginHolding.price_usd) || 0;
                 const total_usd = Number(marginHolding.net_asset_usd) || amount * price_usd;
+                const change_24h = marginHolding.change_24h !== undefined ? Number(marginHolding.change_24h) : undefined;
                 
-                console.log(`Processing margin holding: ${symbol}, amount: ${amount}, price: ${price_usd}, total: ${total_usd}`);
+                console.log(`Processing margin holding: ${symbol}, amount: ${amount}, price: ${price_usd}, total: ${total_usd}, change_24h: ${change_24h !== undefined ? change_24h + '%' : 'undefined'}`);
                 
                 if (amount > 0 && isFinite(amount) && isFinite(price_usd) && total_usd > 0) {
                   totalMarginValue += total_usd;
@@ -269,12 +435,23 @@ function BinancePortfolio() {
                   const currentValue = assetValues.get(symbol) || 0;
                   assetValues.set(symbol, currentValue + total_usd);
                   
+                  // Calculate weighted 24h change
+                  if (change_24h !== undefined && isFinite(change_24h)) {
+                    totalWeightedChange += change_24h * total_usd;
+                    totalValueWithChange += total_usd;
+                  }
+                  
                   processedMarginHoldings.push({
                     symbol: symbol,
                     amount: amount,
                     price_usd: price_usd,
                     total_usd: total_usd,
-                    change_24h: undefined // Change data might not be available
+                    change_24h: change_24h, // Use the 24h change from API
+                    avg_buy_price: marginHolding.avg_buy_price,
+                    pnl: marginHolding.pnl,
+                    pnl_percentage: marginHolding.pnl_percentage,
+                    first_buy_time: marginHolding.first_buy_time,
+                    last_buy_time: marginHolding.last_buy_time
                   });
                 }
               }
@@ -286,6 +463,7 @@ function BinancePortfolio() {
           const processedFuturesHoldings: Holding[] = [];
           if (data.futures_holdings && typeof data.futures_holdings === 'object') {
             console.log('Processing futures holdings:', Object.keys(data.futures_holdings).length, 'items');
+            futuresCoinsCount = Object.keys(data.futures_holdings).length;
             Object.entries(data.futures_holdings).forEach(([key, holding]) => {
               if (holding && typeof holding === 'object') {
                 // Extract asset symbol from the key (e.g., "BTCUSDT_futures" -> "BTC")
@@ -295,8 +473,9 @@ function BinancePortfolio() {
                 const amount = Number(futuresHolding.amount) || 0;
                 const price_usd = Number(futuresHolding.current_price) || 0;
                 const total_usd = Number(futuresHolding.usd_value) || amount * price_usd;
+                const change_24h = futuresHolding.change_24h !== undefined ? Number(futuresHolding.change_24h) : undefined;
                 
-                console.log(`Processing futures holding: ${symbol}, amount: ${amount}, price: ${price_usd}, total: ${total_usd}`);
+                console.log(`Processing futures holding: ${symbol}, amount: ${amount}, price: ${price_usd}, total: ${total_usd}, change_24h: ${change_24h !== undefined ? change_24h + '%' : 'undefined'}`);
                 
                 if (amount > 0 && isFinite(amount) && isFinite(price_usd) && total_usd > 0) {
                   totalFuturesValue += total_usd;
@@ -306,18 +485,31 @@ function BinancePortfolio() {
                   const currentValue = assetValues.get(symbol) || 0;
                   assetValues.set(symbol, currentValue + total_usd);
                   
+                  // Calculate weighted 24h change
+                  if (change_24h !== undefined && isFinite(change_24h)) {
+                    totalWeightedChange += change_24h * total_usd;
+                    totalValueWithChange += total_usd;
+                  }
+                  
                   processedFuturesHoldings.push({
                     symbol: symbol,
                     amount: amount,
                     price_usd: price_usd,
                     total_usd: total_usd,
-                    change_24h: undefined // Change data might not be available
+                    change_24h: change_24h, // Use the 24h change from API
+                    avg_buy_price: futuresHolding.entry_price, // Use entry_price as avg_buy_price for futures
+                    pnl: futuresHolding.unrealized_pnl, // Use unrealized_pnl as pnl for futures
+                    pnl_percentage: futuresHolding.unrealized_pnl_usd / total_usd * 100 // Calculate pnl_percentage for futures
                   });
                 }
               }
             });
             console.log('Processed futures holdings:', processedFuturesHoldings.length, 'items, total value:', totalFuturesValue);
           }
+          
+          // Calculate weighted average 24h change across all holdings
+          const averageChange = totalValueWithChange > 0 ? totalWeightedChange / totalValueWithChange : 0;
+          console.log('Calculated weighted average 24h change:', averageChange);
           
           // Generate asset allocation data for the chart
           const calculatedTotalValue = totalSpotValue + totalMarginValue + totalFuturesValue;
@@ -338,6 +530,35 @@ function BinancePortfolio() {
           // Sort by value descending
           generatedAssetAllocation.sort((a, b) => b.value - a.value);
           
+          // Generate sector allocation data
+          const sectorValues = new Map<string, number>();
+          if (calculatedTotalValue > 0) {
+            assetValues.forEach((value, asset) => {
+              if (value > 0) {
+                const sector = mapAssetToSector(asset);
+                const currentValue = sectorValues.get(sector) || 0;
+                sectorValues.set(sector, currentValue + value);
+              }
+            });
+          }
+          
+          // Convert sector values map to array
+          const generatedSectorAllocation: AssetAllocation[] = [];
+          if (calculatedTotalValue > 0) {
+            sectorValues.forEach((value, sector) => {
+              if (value > 0) {
+                generatedSectorAllocation.push({
+                  asset: sector,
+                  value: value,
+                  percentage: (value / calculatedTotalValue) * 100
+                });
+              }
+            });
+          }
+          
+          // Sort by value descending
+          generatedSectorAllocation.sort((a, b) => b.value - a.value);
+          
           // Update holdings with cleaned data
           setSpotHoldings(processedSpotHoldings);
           setMarginHoldings(processedMarginHoldings);
@@ -350,7 +571,12 @@ function BinancePortfolio() {
             marginValue: totalMarginValue,
             futuresValue: totalFuturesValue,
             uniqueAssetCount: uniqueAssets.size,
-            assetAllocation: generatedAssetAllocation
+            assetAllocation: generatedAssetAllocation,
+            sectorAllocation: generatedSectorAllocation,
+            spotCoinsCount: spotCoinsCount,
+            marginCoinsCount: marginCoinsCount,
+            futuresCoinsCount: futuresCoinsCount,
+            averageChange: averageChange
           };
         };
         
@@ -359,11 +585,13 @@ function BinancePortfolio() {
         
         console.log('Calculated portfolio values:', calculatedValues);
         
-        // Use the calculated total value instead of the one from the API (like in HTML template)
+        // Use the calculated total value instead of the one from the API
         // Fallback to API values if they exist and calculated values are invalid
         const validatedData = {
           total_value: calculatedValues.totalValue > 0 ? calculatedValues.totalValue : 0,
-          change_24h: isFinite(Number(data.change_24h)) ? Number(data.change_24h) : 0,
+          change_24h: calculatedValues.averageChange !== undefined && isFinite(calculatedValues.averageChange) ? 
+                     calculatedValues.averageChange : 
+                     (isFinite(Number(data.change_24h)) ? Number(data.change_24h) : 0),
           holdings_count: calculatedValues.uniqueAssetCount > 0 ? calculatedValues.uniqueAssetCount : 
                           (Object.keys(data.spot_holdings || {}).length + 
                            Object.keys(data.margin_holdings || {}).length + 
@@ -372,11 +600,20 @@ function BinancePortfolio() {
           margin_value: calculatedValues.marginValue > 0 ? calculatedValues.marginValue : 0,
           futures_value: calculatedValues.futuresValue > 0 ? calculatedValues.futuresValue : 0,
           asset_allocation: calculatedValues.assetAllocation,
+          sector_allocation: calculatedValues.sectorAllocation,
           last_updated: new Date().toLocaleTimeString()
         };
 
         // Update portfolio data with validated values
         setPortfolioData(validatedData);
+        
+        // Cache the fresh data
+        saveDataToCache(
+          validatedData,
+          spotHoldings,
+          marginHoldings,
+          futuresHoldings
+        );
         
         // Log successful data fetch for debugging
         console.log('API data successfully processed', validatedData);
@@ -392,45 +629,54 @@ function BinancePortfolio() {
       }
     } catch (error) {
       console.error('Error fetching portfolio data:', error);
-      setError(error instanceof Error ? error.message : 'Unknown error occurred');
       
-      // Set fallback data if needed
-      if (portfolioData.total_value === 0) {
-        // Only set fallback data if we don't have any data yet
-        setPortfolioData({
-          total_value: 34567.89,
-          change_24h: 2.5,
-          holdings_count: 12,
-          spot_value: 18932.45,
-          margin_value: 8254.32,
-          futures_value: 7381.12,
-          last_updated: new Date().toLocaleTimeString()
-        });
+      if (!isBackgroundRefresh) {
+        // Only show error to user if it's not a background refresh
+        setError(error instanceof Error ? error.message : 'Unknown error occurred');
         
-        setSpotHoldings([
-          { symbol: 'BTC', amount: 0.45, price_usd: 42500, total_usd: 19125, change_24h: 2.3 },
-          { symbol: 'ETH', amount: 3.25, price_usd: 2800, total_usd: 9100, change_24h: 1.8 },
-          { symbol: 'SOL', amount: 42.8, price_usd: 135, total_usd: 5778, change_24h: -0.7 }
-        ]);
-        
-        setMarginHoldings([
-          { symbol: 'BTC', amount: 0.12, price_usd: 42500, total_usd: 5100, change_24h: 2.3 },
-          { symbol: 'ETH', amount: 1.15, price_usd: 2800, total_usd: 3220, change_24h: 1.8 }
-        ]);
-        
-        setFuturesHoldings([
-          { symbol: 'BTC', amount: 0.08, price_usd: 42500, total_usd: 3400, change_24h: 2.3 },
-          { symbol: 'ETH', amount: 1.42, price_usd: 2800, total_usd: 3976, change_24h: 1.8 }
-        ]);
+        // If no cached data was loaded earlier and this is the initial load,
+        // set fallback data
+        if (portfolioData.total_value === 0) {
+          // Only set fallback data if we don't have any data yet
+          setPortfolioData({
+            total_value: 34567.89,
+            change_24h: 2.5,
+            holdings_count: 12,
+            spot_value: 18932.45,
+            margin_value: 8254.32,
+            futures_value: 7381.12,
+            last_updated: new Date().toLocaleTimeString()
+          });
+          
+          setSpotHoldings([
+            { symbol: 'BTC', amount: 0.45, price_usd: 42500, total_usd: 19125, change_24h: 2.3 },
+            { symbol: 'ETH', amount: 3.25, price_usd: 2800, total_usd: 9100, change_24h: 1.8 },
+            { symbol: 'SOL', amount: 42.8, price_usd: 135, total_usd: 5778, change_24h: -0.7 }
+          ]);
+          
+          setMarginHoldings([
+            { symbol: 'BTC', amount: 0.12, price_usd: 42500, total_usd: 5100, change_24h: 2.3 },
+            { symbol: 'ETH', amount: 1.15, price_usd: 2800, total_usd: 3220, change_24h: 1.8 }
+          ]);
+          
+          setFuturesHoldings([
+            { symbol: 'BTC', amount: 0.08, price_usd: 42500, total_usd: 3400, change_24h: 2.3 },
+            { symbol: 'ETH', amount: 1.42, price_usd: 2800, total_usd: 3976, change_24h: 1.8 }
+          ]);
+        }
       }
     } finally {
-      setIsLoading(false);
+      if (isBackgroundRefresh) {
+        setIsRefreshing(false);
+      } else {
+        setIsLoading(false);
+      }
     }
   };
 
-  // Initialize chart
+  // Update chart initialization to show only investment types
   useEffect(() => {
-    if (!chartRef.current) return; // Ensure the ref is available
+    if (!chartRef.current) return;
 
     // Cleanup function to destroy the chart instance
     const destroyChart = () => {
@@ -446,23 +692,10 @@ function BinancePortfolio() {
     // Add a small delay to ensure clean DOM before creating a new chart
     const timer = setTimeout(() => {
       const ctx = chartRef.current?.getContext('2d');
+      
       if (!ctx) return;
 
       try {
-        console.log('Chart data to render:', {
-          assetAllocation: portfolioData.asset_allocation ? portfolioData.asset_allocation.length : 0,
-          spotValue: portfolioData.spot_value,
-          marginValue: portfolioData.margin_value,
-          futuresValue: portfolioData.futures_value,
-          totalValue: portfolioData.total_value
-        });
-
-        // Check if we have valid asset allocation data
-        const hasValidAssetAllocation = 
-          portfolioData.asset_allocation && 
-          Array.isArray(portfolioData.asset_allocation) && 
-          portfolioData.asset_allocation.length > 0;
-
         // Check if we have valid investment type data
         const totalInvestmentValue = 
           (isFinite(portfolioData.spot_value) ? portfolioData.spot_value : 0) + 
@@ -471,83 +704,36 @@ function BinancePortfolio() {
         
         const hasValidInvestmentData = totalInvestmentValue > 0;
 
-        // Create chart configuration based on available data
+        // Create investment type chart
         let newChart: Chart | null = null;
 
-        if (hasValidAssetAllocation && portfolioData.asset_allocation) {
-          // Use asset allocation data from API
-          const assetAllocation = portfolioData.asset_allocation;
-          const assetLabels = assetAllocation.map(item => item.asset);
-          const assetData = assetAllocation.map(item => item.value);
-          const assetPercentages = assetAllocation.map(item => item.percentage.toFixed(2));
-          
-          // Create a color array based on the number of assets (using a predefined color palette)
-          const colorPalette = [
-            '#3b82f6', // Blue
-            '#10b981', // Green
-            '#f59e0b', // Orange
-            '#ef4444', // Red
-            '#8b5cf6', // Purple
-            '#06b6d4', // Cyan
-            '#ec4899', // Pink
-            '#f97316', // Orange-red
-            '#6366f1', // Indigo
-            '#14b8a6'  // Teal
-          ];
-          
-          const colors = assetLabels.map((_, index) => colorPalette[index % colorPalette.length]);
-          
-          newChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-              labels: assetLabels,
-              datasets: [{
-                data: assetData,
-                backgroundColor: colors,
-                borderWidth: 0
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              cutout: '65%',
-              plugins: {
-                tooltip: {
-                  callbacks: {
-                    label: function(context) {
-                      const label = context.label || '';
-                      const value = context.raw as number;
-                      const percentage = assetPercentages[context.dataIndex];
-                      return `${label}: ${formatCurrency(value)} (${percentage}%)`;
-                    }
-                  }
-                }
-              }
-            }
-          });
-        } else if (hasValidInvestmentData) {
+        if (hasValidInvestmentData) {
           // Use investment type data (spot, margin, futures)
           // Only include values greater than zero
           const labels: string[] = [];
           const data: number[] = [];
           const colors: string[] = [];
+          const coinCounts: number[] = [];
           
           if (portfolioData.spot_value > 0) {
             labels.push('Spot');
             data.push(portfolioData.spot_value);
             colors.push('#3b82f6'); // Blue for Spot
+            coinCounts.push(spotHoldings.length); // Use actual holdings length
           }
           
           if (portfolioData.margin_value > 0) {
             labels.push('Margin');
             data.push(portfolioData.margin_value);
             colors.push('#10b981'); // Green for Margin
+            coinCounts.push(marginHoldings.length); // Use actual holdings length
           }
           
           if (portfolioData.futures_value > 0) {
             labels.push('Futures');
             data.push(portfolioData.futures_value);
             colors.push('#f59e0b'); // Orange for Futures
+            coinCounts.push(futuresHoldings.length); // Use actual holdings length
           }
           
           // Calculate percentages
@@ -574,8 +760,24 @@ function BinancePortfolio() {
                       const label = context.label || '';
                       const value = context.raw as number;
                       const percentage = percentages[context.dataIndex];
-                      return `${label}: ${formatCurrency(value)} (${percentage}%)`;
+                      const coinCount = coinCounts[context.dataIndex];
+                      return [
+                        `${label}: ${formatCurrency(value)} (${percentage}%)`,
+                        `Coins: ${coinCount}`
+                      ];
                     }
+                  }
+                },
+                legend: {
+                  position: 'bottom',
+                  labels: {
+                    color: '#e2e8f0',
+                    font: {
+                      family: "'Inter', sans-serif",
+                      size: 12
+                    },
+                    boxWidth: 12,
+                    padding: 10
                   }
                 }
               }
@@ -629,11 +831,20 @@ function BinancePortfolio() {
 
   // Fetch data on initial load and set up refresh interval
   useEffect(() => {
-    // Fetch data initially
-    fetchPortfolioData();
+    // First try to load cached data for immediate display
+    const hasCachedData = loadCachedData();
+    
+    // Then fetch fresh data (with different loading behavior based on cache)
+    if (hasCachedData) {
+      // If we have cached data, fetch in the background
+      fetchPortfolioData(true);
+    } else {
+      // If no cached data, show the loading spinner
+      fetchPortfolioData(false);
+    }
     
     // Set up refresh interval - every 30 seconds
-    const intervalId = setInterval(fetchPortfolioData, 30000);
+    const intervalId = setInterval(() => fetchPortfolioData(true), 30000);
     
     // Clean up interval on component unmount
     return () => clearInterval(intervalId);
@@ -708,14 +919,14 @@ function BinancePortfolio() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <header className="mb-8">
+    <div className="container mx-auto px-4 py-6">
+      <header className="mb-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-blue-600">
+            <h1 className="text-2xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-blue-600">
               Binance Portfolio
             </h1>
-            <p className="text-slate-400 mt-1">
+            <p className="text-slate-400 text-sm mt-1">
               Analyze your Binance portfolio with detailed insights
             </p>
           </div>
@@ -726,145 +937,290 @@ function BinancePortfolio() {
       </header>
 
       {error && (
-        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 mb-6">
-          <p className="text-red-400">Error: {error}</p>
+        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 mb-4">
+          <p className="text-red-400 text-sm">Error: {error}</p>
           <button 
-            onClick={fetchPortfolioData}
-            className="mt-2 bg-red-500/30 hover:bg-red-500/50 px-3 py-1 rounded text-sm text-white"
+            onClick={() => fetchPortfolioData(false)}
+            className="mt-2 bg-red-500/30 hover:bg-red-500/50 px-3 py-1 rounded text-xs text-white"
           >
             Retry
           </button>
         </div>
       )}
 
-      <div className="flex flex-col lg:flex-row gap-8">
+      <div className="flex flex-col lg:flex-row gap-6">
         {/* Main Content - 2/3 width */}
         <div className="lg:w-2/3">
           {/* Portfolio Overview */}
-          <div className="bg-slate-800/50 backdrop-blur-md border border-slate-700/30 rounded-xl p-6 mb-8 card">
-            <h2 className="text-xl font-semibold mb-4 border-l-4 border-blue-500 pl-3 section-header">Portfolio Overview</h2>
-            <div className="flex flex-col lg:flex-row gap-4">
-              <div className="lg:w-3/5">
-                <div className="grid grid-cols-3 gap-3 mb-4">
-                  <div className="bg-slate-800 rounded-lg p-3">
-                    <p className="text-slate-400 text-xs">Total Value</p>
-                    <p className="text-xl font-bold">{formatCurrency(portfolioData.total_value)}</p>
-                  </div>
-                  <div className="bg-slate-800 rounded-lg p-3">
-                    <p className="text-slate-400 text-xs">24h Change</p>
-                    <p className={`text-xl font-bold ${portfolioData.change_24h >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {formatPercentage(portfolioData.change_24h)}
-                    </p>
-                  </div>
-                  <div className="bg-slate-800 rounded-lg p-3">
-                    <p className="text-slate-400 text-xs">Holdings</p>
-                    <p className="text-xl font-bold">{portfolioData.holdings_count}</p>
-                  </div>
+          <div className="bg-slate-800/50 backdrop-blur-md border border-slate-700/30 rounded-xl p-4 mb-5 card">
+            <h2 className="text-xl font-semibold mb-3 border-l-4 border-blue-500 pl-3 section-header">Portfolio Overview</h2>
+            
+            {/* Key Metrics */}
+            <div className="grid grid-cols-4 gap-3 mb-4">
+              <div className="bg-slate-800 rounded-lg p-3 shadow-lg hover:shadow-blue-900/20 transition-all">
+                <p className="text-slate-400 text-sm mb-1">Total Value</p>
+                <p className="text-xl font-bold text-white">{formatCurrency(portfolioData.total_value)}</p>
+              </div>
+              <div className="bg-slate-800 rounded-lg p-3 shadow-lg hover:shadow-blue-900/20 transition-all">
+                <p className="text-slate-400 text-sm mb-1">24h Change</p>
+                <p className={`text-xl font-bold ${portfolioData.change_24h >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {formatPercentage(portfolioData.change_24h)}
+                </p>
+              </div>
+              <div className="bg-slate-800 rounded-lg p-3 shadow-lg hover:shadow-blue-900/20 transition-all">
+                <p className="text-slate-400 text-sm mb-1">Holdings</p>
+                <p className="text-xl font-bold text-white">{portfolioData.holdings_count}</p>
+              </div>
+              <div className="bg-slate-800 rounded-lg p-3 shadow-lg hover:shadow-blue-900/20 transition-all">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 text-sm">Last Updated</span>
+                  {(isLoading || isRefreshing) && (
+                    <span className="inline-flex items-center">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse mr-1"></div>
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse opacity-75 mr-1" style={{ animationDelay: '0.2s' }}></div>
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse opacity-50" style={{ animationDelay: '0.4s' }}></div>
+                    </span>
+                  )}
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-slate-800/50 rounded-lg p-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 text-xs">Spot Holdings</span>
-                      <span className="font-medium text-slate-200 text-sm">{formatCurrency(portfolioData.spot_value)}</span>
-                    </div>
-                  </div>
-                  <div className="bg-slate-800/50 rounded-lg p-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 text-xs">Margin Holdings</span>
-                      <span className="font-medium text-slate-200 text-sm">{formatCurrency(portfolioData.margin_value)}</span>
-                    </div>
-                  </div>
-                  <div className="bg-slate-800/50 rounded-lg p-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 text-xs">Futures Holdings</span>
-                      <span className="font-medium text-slate-200 text-sm">{formatCurrency(portfolioData.futures_value)}</span>
-                    </div>
-                  </div>
-                  <div className="bg-slate-800/50 rounded-lg p-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 text-xs">Last Updated</span>
-                      <span className="font-medium text-slate-200 text-sm">
-                        {portfolioData.last_updated}
-                        {isLoading && (
-                          <span className="inline-block ml-2">
-                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-100"></div>
-                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-200"></div>
-                          </span>
-                        )}
+                <p className="text-sm font-medium text-slate-300 mt-1">{portfolioData.last_updated}</p>
+              </div>
+            </div>
+            
+            {/* Portfolio Composition & Charts */}
+            <div className="flex flex-col md:flex-row gap-3">
+              {/* Portfolio Composition with 24h changes */}
+              <div className="md:w-1/2">
+                <div className="bg-slate-800/50 rounded-lg p-3 mb-2">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-slate-300 text-sm font-medium">Spot Holdings</span>
+                    <div className="text-right">
+                      <span className="font-medium text-slate-200 text-sm block">{formatCurrency(portfolioData.spot_value)}</span>
+                      <span className={`text-xs ${spotHoldings.length > 0 && spotHoldings[0].change_24h !== undefined ? 
+                        (spotHoldings[0].change_24h >= 0 ? 'text-green-500' : 'text-red-500') : 
+                        (portfolioData.change_24h >= 0 ? 'text-green-500' : 'text-red-500')}`}>
+                        {spotHoldings.length > 0 && spotHoldings[0].change_24h !== undefined ? 
+                          formatPercentage(spotHoldings[0].change_24h) : 
+                          formatPercentage(portfolioData.change_24h)} (24h)
                       </span>
                     </div>
                   </div>
+                  <div className="w-full bg-slate-700/50 h-2 rounded-full">
+                    <div 
+                      className="bg-blue-500 h-2 rounded-full" 
+                      style={{ width: `${(portfolioData.spot_value / portfolioData.total_value * 100) || 0}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1 flex justify-between">
+                    <span>{spotHoldings.length} coins</span>
+                    <span>{Math.round((portfolioData.spot_value / portfolioData.total_value * 100) || 0)}% of portfolio</span>
+                  </div>
+                </div>
+                
+                <div className="bg-slate-800/50 rounded-lg p-3 mb-2">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-slate-300 text-sm font-medium">Margin Holdings</span>
+                    <div className="text-right">
+                      <span className="font-medium text-slate-200 text-sm block">{formatCurrency(portfolioData.margin_value)}</span>
+                      <span className={`text-xs ${marginHoldings.length > 0 && marginHoldings[0].change_24h !== undefined ? 
+                        (marginHoldings[0].change_24h >= 0 ? 'text-green-500' : 'text-red-500') : 
+                        (portfolioData.change_24h >= 0 ? 'text-green-500' : 'text-red-500')}`}>
+                        {marginHoldings.length > 0 && marginHoldings[0].change_24h !== undefined ? 
+                          formatPercentage(marginHoldings[0].change_24h) : 
+                          formatPercentage(portfolioData.change_24h)} (24h)
+                      </span>
+                    </div>
+                  </div>
+                  <div className="w-full bg-slate-700/50 h-2 rounded-full">
+                    <div 
+                      className="bg-green-500 h-2 rounded-full" 
+                      style={{ width: `${(portfolioData.margin_value / portfolioData.total_value * 100) || 0}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1 flex justify-between">
+                    <span>{marginHoldings.length} coins</span>
+                    <span>{Math.round((portfolioData.margin_value / portfolioData.total_value * 100) || 0)}% of portfolio</span>
+                  </div>
+                </div>
+                
+                <div className="bg-slate-800/50 rounded-lg p-3">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-slate-300 text-sm font-medium">Futures Holdings</span>
+                    <div className="text-right">
+                      <span className="font-medium text-slate-200 text-sm block">{formatCurrency(portfolioData.futures_value)}</span>
+                      <span className={`text-xs ${futuresHoldings.length > 0 && futuresHoldings[0].change_24h !== undefined ? 
+                        (futuresHoldings[0].change_24h >= 0 ? 'text-green-500' : 'text-red-500') : 
+                        (portfolioData.change_24h >= 0 ? 'text-green-500' : 'text-red-500')}`}>
+                        {futuresHoldings.length > 0 && futuresHoldings[0].change_24h !== undefined ? 
+                          formatPercentage(futuresHoldings[0].change_24h) : 
+                          formatPercentage(portfolioData.change_24h)} (24h)
+                      </span>
+                    </div>
+                  </div>
+                  <div className="w-full bg-slate-700/50 h-2 rounded-full">
+                    <div 
+                      className="bg-orange-500 h-2 rounded-full" 
+                      style={{ width: `${(portfolioData.futures_value / portfolioData.total_value * 100) || 0}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1 flex justify-between">
+                    <span>{futuresHoldings.length} coins</span>
+                    <span>{Math.round((portfolioData.futures_value / portfolioData.total_value * 100) || 0)}% of portfolio</span>
+                  </div>
                 </div>
               </div>
-              <div className="lg:w-2/5">
-                <div className="h-40">
+              
+              {/* Investment Type Chart */}
+              <div className="md:w-1/2">
+                <h3 className="text-sm font-medium text-slate-300 mb-2 text-center">Investment Distribution</h3>
+                <div className="h-52 flex items-center justify-center">
                   <canvas ref={chartRef}></canvas>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Holdings */}
-          <div className="bg-slate-800/50 backdrop-blur-md border border-slate-700/30 rounded-xl p-6 card">
+          {/* Holdings Section with Tabs */}
+          <div className="bg-slate-800/50 backdrop-blur-md border border-slate-700/30 rounded-xl p-5 mt-6 card">
             <h2 className="text-xl font-semibold mb-4 border-l-4 border-blue-500 pl-3 section-header">Holdings</h2>
             
-            {/* Spot Trading Section */}
-            <div className="mb-8">
-              <h3 className="text-lg font-medium mb-3 text-blue-400">Spot Trading</h3>
-              <div className="overflow-x-auto custom-scrollbar">
-                {spotHoldings.length > 0 ? (
-                  <HoldingsTable holdings={spotHoldings} />
-                ) : (
-                  <p className="text-slate-400 text-center py-4">No spot holdings found.</p>
-                )}
-              </div>
+            <div className="flex border-b border-slate-700/50 mb-5">
+              <button 
+                className={`flex-1 text-base py-2 px-4 focus:outline-none font-medium transition-colors ${
+                  activeTab === 'spot' 
+                    ? 'border-b-2 border-blue-500 text-blue-400 bg-blue-500/10' 
+                    : 'border-b-2 border-transparent text-slate-400 hover:text-slate-300 hover:bg-slate-700/30'
+                }`}
+                onClick={() => setActiveTab('spot')}
+              >
+                Spot Trading
+              </button>
+              <button 
+                className={`flex-1 text-base py-2 px-4 focus:outline-none font-medium transition-colors ${
+                  activeTab === 'margin' 
+                    ? 'border-b-2 border-blue-500 text-blue-400 bg-blue-500/10' 
+                    : 'border-b-2 border-transparent text-slate-400 hover:text-slate-300 hover:bg-slate-700/30'
+                }`}
+                onClick={() => setActiveTab('margin')}
+              >
+                Cross Margin
+              </button>
+              <button 
+                className={`flex-1 text-base py-2 px-4 focus:outline-none font-medium transition-colors ${
+                  activeTab === 'futures' 
+                    ? 'border-b-2 border-blue-500 text-blue-400 bg-blue-500/10' 
+                    : 'border-b-2 border-transparent text-slate-400 hover:text-slate-300 hover:bg-slate-700/30'
+                }`}
+                onClick={() => setActiveTab('futures')}
+              >
+                Futures
+              </button>
             </div>
             
-            {/* Cross Margin Section */}
-            <div className="mb-8">
-              <h3 className="text-lg font-medium mb-3 text-blue-400">Cross Margin</h3>
-              <div className="overflow-x-auto custom-scrollbar">
-                {marginHoldings.length > 0 ? (
-                  <HoldingsTable holdings={marginHoldings} />
-                ) : (
-                  <p className="text-slate-400 text-center py-4">No margin holdings found.</p>
-                )}
-              </div>
-            </div>
-            
-            {/* Futures Section */}
-            <div>
-              <h3 className="text-lg font-medium mb-3 text-blue-400">Futures</h3>
-              <div className="overflow-x-auto custom-scrollbar">
-                {futuresHoldings.length > 0 ? (
-                  <HoldingsTable holdings={futuresHoldings} />
-                ) : (
-                  <p className="text-slate-400 text-center py-4">No futures holdings found.</p>
-                )}
-              </div>
+            <div className="overflow-x-auto custom-scrollbar">
+              {activeTab === 'spot' && (
+                <>
+                  {spotHoldings.length > 0 ? (
+                    <div className="bg-slate-900/30 rounded-lg p-1">
+                      <HoldingsTable holdings={spotHoldings} />
+                    </div>
+                  ) : (
+                    <div className="bg-slate-900/30 rounded-lg p-6">
+                      <p className="text-slate-400 text-center py-4 flex items-center justify-center">
+                        {isLoading ? (
+                          <>
+                            <span className="mr-2">Fetching spot holdings</span>
+                            <span className="inline-flex items-center">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse mr-1"></div>
+                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse opacity-75 mr-1" style={{ animationDelay: '0.2s' }}></div>
+                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse opacity-50" style={{ animationDelay: '0.4s' }}></div>
+                            </span>
+                          </>
+                        ) : (
+                          "No spot holdings found."
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+              
+              {activeTab === 'margin' && (
+                <>
+                  {marginHoldings.length > 0 ? (
+                    <div className="bg-slate-900/30 rounded-lg p-1">
+                      <HoldingsTable holdings={marginHoldings} />
+                    </div>
+                  ) : (
+                    <div className="bg-slate-900/30 rounded-lg p-6">
+                      <p className="text-slate-400 text-center py-4 flex items-center justify-center">
+                        {isLoading ? (
+                          <>
+                            <span className="mr-2">Fetching margin holdings</span>
+                            <span className="inline-flex items-center">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse mr-1"></div>
+                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse opacity-75 mr-1" style={{ animationDelay: '0.2s' }}></div>
+                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse opacity-50" style={{ animationDelay: '0.4s' }}></div>
+                            </span>
+                          </>
+                        ) : (
+                          "No margin holdings found."
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+              
+              {activeTab === 'futures' && (
+                <>
+                  {futuresHoldings.length > 0 ? (
+                    <div className="bg-slate-900/30 rounded-lg p-1">
+                      <HoldingsTable holdings={futuresHoldings} />
+                    </div>
+                  ) : (
+                    <div className="bg-slate-900/30 rounded-lg p-6">
+                      <p className="text-slate-400 text-center py-4 flex items-center justify-center">
+                        {isLoading ? (
+                          <>
+                            <span className="mr-2">Fetching futures holdings</span>
+                            <span className="inline-flex items-center">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse mr-1"></div>
+                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse opacity-75 mr-1" style={{ animationDelay: '0.2s' }}></div>
+                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse opacity-50" style={{ animationDelay: '0.4s' }}></div>
+                            </span>
+                          </>
+                        ) : (
+                          "No futures holdings found."
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Chat Box - 1/3 width */}
+        {/* Chat Box - 1/3 width - make it more compact */}
         <div className="lg:w-1/3">
-          <div className="bg-slate-800/50 backdrop-blur-md border border-slate-700/30 rounded-xl p-6 sticky top-4 card">
-            <h2 className="text-xl font-semibold mb-4 border-l-4 border-blue-500 pl-3 section-header">Portfolio Query</h2>
+          <div className="bg-slate-800/50 backdrop-blur-md border border-slate-700/30 rounded-xl p-5 sticky top-4 card">
+            <h2 className="text-xl font-semibold mb-3 border-l-4 border-blue-500 pl-3 section-header">Portfolio Query</h2>
             <p className="text-slate-400 text-sm mb-4">
-              Ask questions about your portfolio and get instant insights.
+              Ask questions about your portfolio to get instant insights about your holdings, performance, and trends.
             </p>
-            <ChatBox 
-              initialMessage="Hello! I can help you analyze your Binance portfolio. What would you like to know? You can ask about your asset allocation, portfolio performance, specific holdings, or investment suggestions."
-              placeholder="Ask about your portfolio..."
-              onSendMessage={handlePortfolioQuery}
-              isLoading={isChatLoading}
-              additionalContext={
-                portfolioData.total_value > 0 ? 
-                `Your portfolio currently has ${portfolioData.holdings_count} holdings with a total value of ${formatCurrency(portfolioData.total_value)}.` : 
-                undefined
-              }
-            />
+            <div className="bg-slate-900/30 rounded-lg p-2">
+              <ChatBox 
+                initialMessage="Hello! I can help you analyze your Binance portfolio. What would you like to know? You can ask about your asset allocation, portfolio performance, specific holdings, or investment suggestions."
+                placeholder="Ask about your portfolio..."
+                onSendMessage={handlePortfolioQuery}
+                isLoading={isChatLoading}
+                additionalContext={
+                  portfolioData.total_value > 0 ? 
+                  `Your portfolio currently has ${portfolioData.holdings_count} holdings with a total value of ${formatCurrency(portfolioData.total_value)}.` : 
+                  undefined
+                }
+              />
+            </div>
           </div>
         </div>
       </div>
