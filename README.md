@@ -9,6 +9,12 @@ This project consists of two main parts:
 1. **Backend (FastAPI)**: Provides the API endpoints and server-side intelligence
 2. **Frontend (React)**: Provides the user interface for interacting with the system
 
+The backend includes several modular agent components:
+
+- **Binance Portfolio Agent**: Refactored into modular components in `agents/binance/`
+- **Kite Portfolio Agent**: For interacting with Kite trading platform
+- **Query Agent**: For processing general financial queries
+
 ## Setup and Installation
 
 ### Backend Setup
@@ -51,6 +57,18 @@ npm start
 ```
 
 The frontend will be available at http://localhost:3000.
+
+## Binance Portfolio Agent
+
+The Binance integration has been refactored into modular components:
+
+- `agents/binance/data_models.py`: Data models
+- `agents/binance/client.py`: Binance API client
+- `agents/binance/vector_db.py`: Vector database for semantic search
+- `agents/binance/portfolio_analysis.py`: Portfolio analysis logic
+- `agents/binance/query_processor.py`: Query processing
+
+See `agents/binance/README.md` for detailed documentation.
 
 ## Production Deployment
 

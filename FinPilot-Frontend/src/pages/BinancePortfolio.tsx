@@ -5,6 +5,7 @@ import ChatBox from '../components/ChatBox';
 import { Chart, registerables, ChartOptions } from 'chart.js';
 import HoldingsTable from '../components/HoldingsTable';
 import ApiService from '../services/apiService';
+import { toast } from 'react-hot-toast';
 
 // Register Chart.js components
 Chart.register(...registerables);
@@ -149,6 +150,8 @@ function BinancePortfolio() {
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'spot' | 'margin' | 'futures'>('spot');
+  const [analysisData, setAnalysisData] = useState<any>(null);
+  const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
 
   // Cache management
   const loadCachedData = () => {
@@ -400,7 +403,8 @@ function BinancePortfolio() {
     setError(null);
     
     try {
-      const response = await ApiService.getBinanceHoldings();
+      // Get detailed portfolio summary instead of just holdings
+      const response = await ApiService.getBinancePortfolioSummary();
       
       // Log the raw API response for debugging
       console.log('Raw API response:', response);
@@ -986,6 +990,80 @@ function BinancePortfolio() {
     }
   };
 
+  // Analyze portfolio function - add after formatTimestamp function
+  const analyzePortfolio = async () => {
+    setIsAnalysisLoading(true);
+    setError(null);
+    
+    try {
+      const response = await ApiService.analyzeBinancePortfolio();
+      
+      console.log('Portfolio analysis response:', response);
+      
+      if (response.status === 'success') {
+        setAnalysisData(response.data);
+        
+        // Show success notification
+        toast.success('Portfolio analysis completed successfully', {
+          position: 'top-right',
+          autoClose: 3000,
+        });
+      } else {
+        setError(response.data?.message || 'Failed to analyze portfolio');
+        toast.error('Failed to analyze portfolio', {
+          position: 'top-right',
+          autoClose: 3000,
+        });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      setError(errorMessage);
+      toast.error(`Error analyzing portfolio: ${errorMessage}`, {
+        position: 'top-right',
+        autoClose: 3000,
+      });
+    } finally {
+      setIsAnalysisLoading(false);
+    }
+  };
+  
+  // Update portfolio data function - add after analyzePortfolio function
+  const updatePortfolioData = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await ApiService.updateBinancePortfolioData();
+      
+      console.log('Portfolio update response:', response);
+      
+      if (response.status === 'success') {
+        toast.success('Portfolio data updated successfully', {
+          position: 'top-right',
+          autoClose: 3000,
+        });
+        
+        // Reload portfolio data with the updated information
+        await fetchPortfolioData();
+      } else {
+        setError(response.data?.message || 'Failed to update portfolio data');
+        toast.error('Failed to update portfolio data', {
+          position: 'top-right',
+          autoClose: 3000,
+        });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      setError(errorMessage);
+      toast.error(`Error updating portfolio data: ${errorMessage}`, {
+        position: 'top-right',
+        autoClose: 3000,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-6">
       <header className="mb-6">
@@ -1034,19 +1112,65 @@ function BinancePortfolio() {
           <div className="bg-slate-800/50 backdrop-blur-md border border-slate-700/30 rounded-xl p-5 mb-5 card shadow-lg hover:shadow-blue-900/10">
             <h2 className="text-2xl font-bold mb-4 border-l-4 border-blue-500 pl-3 section-header flex items-center">
               Portfolio Overview
-              <span className="ml-auto text-sm font-normal text-slate-400 flex items-center">
-                {(isLoading || isRefreshing) && (
-                  <span className="inline-flex items-center mr-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse mr-1"></div>
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse opacity-75 mr-1" style={{ animationDelay: '0.2s' }}></div>
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse opacity-50" style={{ animationDelay: '0.4s' }}></div>
-                  </span>
-                )}
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+
+              <div className="flex items-center ml-auto">
+                {/* Analysis button */}
+                <button 
+                  onClick={analyzePortfolio}
+                  disabled={isAnalysisLoading || isLoading}
+                  className="text-xs px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg mr-2 transition-colors flex items-center"
+                >
+                  {isAnalysisLoading ? (
+                    <>
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse mr-1"></div>
+                      <span>Analyzing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                      <span>Analyze</span>
+                    </>
+                  )}
+                </button>
+                
+                {/* Update button */}
+                <button 
+                  onClick={updatePortfolioData}
+                  disabled={isLoading}
+                  className="text-xs px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg mr-4 transition-colors flex items-center"
+                >
+                  {isLoading ? (
+                    <>
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-1"></div>
+                      <span>Updating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span>Update</span>
+                    </>
+                  )}
+                </button>
+                
+                {/* Last Updated text */}
+                <span className="text-sm font-normal text-slate-400 flex items-center">
+                  {(isLoading || isRefreshing) && (
+                    <span className="inline-flex items-center mr-2">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse mr-1"></div>
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse opacity-75 mr-1" style={{ animationDelay: '0.2s' }}></div>
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse opacity-50" style={{ animationDelay: '0.4s' }}></div>
+                    </span>
+                  )}
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                Last Updated: {portfolioData.last_updated}
-              </span>
+                  Last Updated: {portfolioData.last_updated}
+                </span>
+              </div>
             </h2>
             
             {/* Total Value Card */}
@@ -1466,6 +1590,79 @@ function BinancePortfolio() {
           </div>
         </div>
       </div>
+
+      {/* Add Analysis Results Section */}
+      {analysisData && (
+        <div className="bg-gradient-to-br from-indigo-600/20 to-indigo-900/20 rounded-xl p-5 border border-indigo-500/30 shadow-md hover:shadow-indigo-900/20 transition-all mt-6">
+          <h3 className="text-xl font-bold text-indigo-400 mb-4 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            Portfolio Analysis Results
+          </h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Risk Metrics */}
+            {analysisData.risk_metrics && (
+              <div className="bg-slate-800/50 rounded-lg p-4 border border-indigo-500/30">
+                <h4 className="text-lg font-semibold text-indigo-300 mb-3">Risk Metrics</h4>
+                <div className="space-y-2">
+                  {Object.entries(analysisData.risk_metrics).map(([key, value]: [string, any]) => (
+                    <div key={key} className="flex justify-between items-center">
+                      <span className="text-slate-400">{key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                      <span className="text-white font-medium">{typeof value === 'number' ? value.toFixed(2) : value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Recommendations */}
+            {analysisData.recommendations && analysisData.recommendations.length > 0 && (
+              <div className="bg-slate-800/50 rounded-lg p-4 border border-indigo-500/30">
+                <h4 className="text-lg font-semibold text-indigo-300 mb-3">Recommendations</h4>
+                <ul className="space-y-2 list-disc pl-5 text-slate-300">
+                  {analysisData.recommendations.map((recommendation: string, index: number) => (
+                    <li key={index}>{recommendation}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            
+            {/* Sector Exposure */}
+            {analysisData.sector_exposure && (
+              <div className="bg-slate-800/50 rounded-lg p-4 border border-indigo-500/30">
+                <h4 className="text-lg font-semibold text-indigo-300 mb-3">Sector Exposure</h4>
+                <div className="space-y-2">
+                  {Object.entries(analysisData.sector_exposure).map(([sector, percentage]: [string, any]) => (
+                    <div key={sector} className="flex justify-between items-center">
+                      <span className="text-slate-400">{sector}</span>
+                      <span className="text-white font-medium">{typeof percentage === 'number' ? formatPercentage(percentage * 100) : percentage}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Asset Performance */}
+            {analysisData.asset_performance && (
+              <div className="bg-slate-800/50 rounded-lg p-4 border border-indigo-500/30">
+                <h4 className="text-lg font-semibold text-indigo-300 mb-3">Asset Performance</h4>
+                <div className="space-y-2">
+                  {Object.entries(analysisData.asset_performance).map(([asset, performance]: [string, any]) => (
+                    <div key={asset} className="flex justify-between items-center">
+                      <span className="text-slate-400">{asset}</span>
+                      <span className={`font-medium ${performance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {typeof performance === 'number' ? formatPercentage(performance * 100) : performance}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

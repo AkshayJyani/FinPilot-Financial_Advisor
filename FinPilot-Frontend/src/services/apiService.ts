@@ -97,12 +97,10 @@ class ApiService {
       console.log('Fetching from:', API_ENDPOINTS.binancePortfolio.holdings);
       
       const response = await fetch(API_ENDPOINTS.binancePortfolio.holdings, {
-        method: 'POST',
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-        },
-        // Add empty body object to ensure consistent POST behavior
-        body: JSON.stringify({}),
+        }
       });
 
       console.log('API Response status:', response.status);
@@ -145,6 +143,90 @@ class ApiService {
           margin_value: 0,
           futures_value: 0,
           change_24h: 0
+        }
+      };
+    }
+  }
+
+  /**
+   * Get Binance portfolio summary
+   */
+  static async getBinancePortfolioSummary(): Promise<ApiResponse> {
+    try {
+      const response = await fetch(API_ENDPOINTS.binancePortfolio.summary, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Binance portfolio summary error:', error);
+      return {
+        status: 'error',
+        data: { 
+          message: error instanceof Error ? error.message : 'Unknown error'
+        }
+      };
+    }
+  }
+
+  /**
+   * Analyze Binance portfolio
+   */
+  static async analyzeBinancePortfolio(): Promise<ApiResponse> {
+    try {
+      const response = await fetch(API_ENDPOINTS.binancePortfolio.analysis, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Binance portfolio analysis error:', error);
+      return {
+        status: 'error',
+        data: { 
+          message: error instanceof Error ? error.message : 'Unknown error'
+        }
+      };
+    }
+  }
+
+  /**
+   * Update Binance portfolio data
+   */
+  static async updateBinancePortfolioData(): Promise<ApiResponse> {
+    try {
+      const response = await fetch(API_ENDPOINTS.binancePortfolio.update, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Binance portfolio update error:', error);
+      return {
+        status: 'error',
+        data: { 
+          message: error instanceof Error ? error.message : 'Unknown error'
         }
       };
     }

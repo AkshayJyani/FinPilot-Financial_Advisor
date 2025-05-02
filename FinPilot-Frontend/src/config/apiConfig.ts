@@ -12,6 +12,9 @@ const API_ENDPOINTS = {
   binancePortfolio: {
     query: `${API_BASE_URL}/api/binance/portfolio/query`,
     holdings: `${API_BASE_URL}/api/binance/portfolio/holdings`,
+    summary: `${API_BASE_URL}/api/binance/portfolio/summary`,
+    analysis: `${API_BASE_URL}/api/binance/portfolio/analysis`,
+    update: `${API_BASE_URL}/api/binance/portfolio/update`,
   },
 
   // Kite Portfolio
