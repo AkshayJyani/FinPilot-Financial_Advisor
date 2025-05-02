@@ -10,16 +10,18 @@ from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.retrievers import VectorIndexRetriever
 import plotly.express as px
 import plotly.graph_objects as go
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 from datetime import datetime, timedelta
 import os
 import time
 from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import Field
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
+
 
 load_dotenv()
+
 
 class DataDirectoryHandler(FileSystemEventHandler):
     def __init__(self, query_agent):

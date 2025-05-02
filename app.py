@@ -59,7 +59,7 @@ app.add_middleware(
 
 # Initialize agents
 query_agent = QueryAgent()
-portfolio_agent = PortfolioAgent()
+binance_portfolio_agent = PortfolioAgent()
 kite_portfolio_agent = KitePortfolioAgent()
 
 # Setup templates and static files
@@ -156,12 +156,12 @@ async def process_binance_portfolio_query(query: QueryRequest):
     Returns insights and analysis about your Binance portfolio based on the query
     """
     try:
-        response = portfolio_agent._run(query.text)
+        response = binance_portfolio_agent._run(query.text)
         return response
     except Exception as e:
         return create_response("error", {"message": str(e)})
 
-@app.post("/api/binance/portfolio/holdings", response_model=Response, tags=["Binance Portfolio"])
+@app.get("/api/binance/portfolio/holdings", response_model=Response, tags=["Binance Portfolio"])
 async def get_binance_holdings():
     """
     Get all Binance portfolio holdings
@@ -169,7 +169,47 @@ async def get_binance_holdings():
     Returns a list of all holdings in your Binance portfolio with details
     """
     try:
-        response = portfolio_agent._run("fetch holdings")
+        response = binance_portfolio_agent.get_holdings()
+        return response
+    except Exception as e:
+        return create_response("error", {"message": str(e)})
+
+# Add these new endpoints for the Binance portfolio
+@app.get("/api/binance/portfolio/summary", response_model=Response, tags=["Binance Portfolio"])
+async def get_binance_portfolio_summary():
+    """
+    Get a comprehensive summary of the Binance portfolio
+    
+    Returns a detailed summary of your Binance portfolio including holdings, analysis, and metrics
+    """
+    try:
+        response = binance_portfolio_agent.get_portfolio_summary()
+        return response
+    except Exception as e:
+        return create_response("error", {"message": str(e)})
+
+@app.get("/api/binance/portfolio/analysis", response_model=Response, tags=["Binance Portfolio"])
+async def analyze_binance_portfolio():
+    """
+    Perform comprehensive analysis on the Binance portfolio
+    
+    Returns in-depth analysis of your Binance portfolio including risk metrics and recommendations
+    """
+    try:
+        response = binance_portfolio_agent.analyze_portfolio()
+        return response
+    except Exception as e:
+        return create_response("error", {"message": str(e)})
+
+@app.post("/api/binance/portfolio/update", response_model=Response, tags=["Binance Portfolio"])
+async def update_binance_portfolio_data():
+    """
+    Update the Binance portfolio data
+    
+    Fetches the latest data from Binance and updates the portfolio information
+    """
+    try:
+        response = binance_portfolio_agent.update_portfolio_data()
         return response
     except Exception as e:
         return create_response("error", {"message": str(e)})
@@ -215,7 +255,7 @@ async def health_check():
         # Check if all agents are initialized
         agents_status = {
             "query_agent": query_agent is not None,
-            "portfolio_agent": portfolio_agent is not None,
+            "portfolio_agent": binance_portfolio_agent is not None,
             "kite_portfolio_agent": kite_portfolio_agent is not None
         }
         
