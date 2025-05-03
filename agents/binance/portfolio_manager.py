@@ -21,10 +21,15 @@ class PortfolioManager:
         self.binance_client = BinanceClient(self.api_key, self.api_secret)
         self.vector_db_manager = VectorDBManager()
         self.portfolio_analyzer = PortfolioAnalyzer(self.binance_client)
-        self.query_processor = QueryProcessor(self.vector_db_manager)
         
         # Use provided portfolio_data or create a new one if not provided
         self.portfolio_data = portfolio_data if portfolio_data is not None else PortfolioData()
+        
+        # Initialize the query processor last, after other components are ready
+        self.query_processor = QueryProcessor(
+            vector_db_manager=self.vector_db_manager,
+            portfolio_manager=self  # Pass self to the query processor
+        )
         
         # Fetch and store initial data
         self.fetch_and_store_data()

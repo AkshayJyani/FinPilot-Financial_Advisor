@@ -1580,11 +1580,6 @@ function BinancePortfolio() {
                 placeholder="Ask about your portfolio..."
                 onSendMessage={handlePortfolioQuery}
                 isLoading={isChatLoading}
-                additionalContext={
-                  portfolioData.total_value > 0 ? 
-                  `Your portfolio currently has ${portfolioData.holdings_count} holdings with a total value of ${formatCurrency(portfolioData.total_value)}.` : 
-                  undefined
-                }
               />
             </div>
           </div>

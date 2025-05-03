@@ -2,6 +2,7 @@ from typing import Dict, List, Any
 import pandas as pd
 import numpy as np
 from langchain.tools import BaseTool
+import time
 from llama_index.core import SimpleDirectoryReader, VectorStoreIndex
 from llama_index.core.settings import Settings
 from llama_index.embeddings.openai import OpenAIEmbedding

@@ -1,44 +1,69 @@
 from typing import Dict, List, Any
 import re
+from .web_search_tool import WebSearchTool
+
+# Import conditionally to handle missing crewai package
+try:
+    from .crew import PortfolioCrew
+    from .crew.tools import PortfolioTools
+    CREWAI_AVAILABLE = True
+except ImportError:
+    print("CrewAI not available. Multi-agent system will not be used.")
+    CREWAI_AVAILABLE = False
 
 
 class QueryProcessor:
-    """Processes natural language queries about portfolio data"""
+    """Processes natural language queries about portfolio data using an advanced multi-agent system"""
     
-    def __init__(self, vector_db_manager=None):
-        """Initialize the query processor with a vector DB manager"""
+    def __init__(self, vector_db_manager=None, portfolio_manager=None):
+        """Initialize the query processor with required managers"""
         self.vector_db_manager = vector_db_manager
-    
-    def _classify_query(self, query: str) -> str:
-        """Classify the query into a specific category"""
-        query = query.lower()
+        self.portfolio_manager = portfolio_manager
+        self.web_search_tool = WebSearchTool()
         
-        # Common query categories
-        categories = {
-            "holdings": ["holdings", "portfolio", "assets", "balance", "hold"],
-            "spot": ["spot", "trading"],
-            "margin": ["margin", "cross margin", "borrowed"],
-            "futures": ["futures", "leveraged", "contract", "perpetual"],
-            "returns": ["returns", "performance", "profit", "loss", "pnl"],
-            "technical": ["technical", "indicators", "rsi", "macd", "bollinger"],
-            "allocation": ["allocation", "distribution", "diversification"],
-            "fetch_holdings": ["fetch holdings"]
-        }
+        # Initialize CrewAI components
+        self.crew = None
+        self.portfolio_tools = None
         
-        # Determine the best match
-        best_category = "general"
-        best_score = 0
+        # Try to initialize CrewAI
+        if not CREWAI_AVAILABLE:
+            print("ERROR: CrewAI is required but not available. Please install it with: pip install crewai")
+            print("The advanced query engine cannot function without CrewAI.")
+            return
         
-        for category, keywords in categories.items():
-            score = sum(1 for keyword in keywords if keyword in query)
-            if score > best_score:
-                best_score = score
-                best_category = category
+        if not self.vector_db_manager:
+            print("ERROR: Vector DB manager is required for the advanced query engine.")
+            return
         
-        return best_category
+        if not self.portfolio_manager:
+            print("ERROR: Portfolio manager is required for the advanced query engine.")
+            return
+        
+        try:
+            # Initialize portfolio tools
+            self.portfolio_tools = PortfolioTools(
+                portfolio_manager=self.portfolio_manager,
+                vector_db_manager=self.vector_db_manager,
+                web_search_tool=self.web_search_tool
+            )
+            
+            # Get tools for each agent category
+            portfolio_tools = self.portfolio_tools.get_all_portfolio_tools()
+            web_search_tools = self.portfolio_tools.get_all_web_search_tools()
+            
+            # Initialize the crew
+            self.crew = PortfolioCrew(
+                portfolio_tools=portfolio_tools,
+                web_search_tools=web_search_tools
+            )
+            
+            print("Advanced multi-agent system (CrewAI) initialized successfully")
+        except Exception as e:
+            print(f"ERROR initializing CrewAI components: {e}")
+            print("The advanced query engine cannot function without properly initialized CrewAI components.")
     
     def process_query(self, query: str) -> Dict[str, Any]:
-        """Process a portfolio query and return a response"""
+        """Process a portfolio query using the advanced multi-agent system"""
         try:
             # Special case for "fetch holdings" command
             if query.lower() == "fetch holdings":
@@ -49,99 +74,30 @@ class QueryProcessor:
                     }
                 }
             
-            # Classify the query
-            query_type = self._classify_query(query)
-            
-            if not self.vector_db_manager:
+            # Ensure CrewAI is properly initialized
+            print(f"CrewAI initialized: {self.crew}")
+            if not self.crew:
                 return {
                     "status": "error",
                     "data": {
-                        "message": "Vector database manager is not initialized"
+                        "message": "Advanced query engine is not initialized. Please check logs for details."
                     }
                 }
             
-            # Query the vector store for relevant information
-            semantic_response = self.vector_db_manager.query(query)
-            relevant_info = str(semantic_response)
-            
-            # Generate tailored response based on query type
-            if query_type == "spot":
-                return {
-                    "status": "success",
-                    "data": {
-                        "message": f"Spot Trading Holdings:\n\n{relevant_info}",
-                        "investment_type": "spot"
-                    }
-                }
-            
-            elif query_type == "margin":
-                return {
-                    "status": "success",
-                    "data": {
-                        "message": f"Cross Margin Holdings:\n\n{relevant_info}",
-                        "investment_type": "spot_cross_margin"
-                    }
-                }
-            
-            elif query_type == "futures":
-                return {
-                    "status": "success",
-                    "data": {
-                        "message": f"Futures Holdings:\n\n{relevant_info}",
-                        "investment_type": "futures"
-                    }
-                }
-            
-            elif query_type == "holdings":
-                return {
-                    "status": "success",
-                    "data": {
-                        "message": f"Portfolio Holdings:\n\n{relevant_info}"
-                    }
-                }
-            
-            elif query_type == "returns":
-                return {
-                    "status": "success",
-                    "data": {
-                        "message": f"Portfolio Returns:\n\n{relevant_info}"
-                    }
-                }
-            
-            elif query_type == "technical":
-                return {
-                    "status": "success",
-                    "data": {
-                        "message": f"Technical Indicators Analysis:\n\n{relevant_info}"
-                    }
-                }
-            
-            elif query_type == "allocation":
-                return {
-                    "status": "success",
-                    "data": {
-                        "message": f"Portfolio Allocation Analysis:\n\n{relevant_info}"
-                    }
-                }
-            
-            # Default response
-            return {
-                "status": "success",
-                "data": {
-                    "message": f"Portfolio Analysis:\n\n{relevant_info}"
-                }
-            }
+            # Process query with the CrewAI system
+            print(f"Processing query with advanced multi-agent system: {query}")
+            return self.crew.process_query(query)
                 
         except Exception as e:
             return {
                 "status": "error",
                 "data": {
-                    "message": f"Error processing query: {str(e)}"
+                    "message": f"Error processing query with advanced engine: {str(e)}"
                 }
             }
     
     async def process_query_async(self, query: str) -> Dict[str, Any]:
-        """Process a portfolio query asynchronously and return a response"""
+        """Process a portfolio query asynchronously using the advanced multi-agent system"""
         try:
             # Special case for "fetch holdings" command
             if query.lower() == "fetch holdings":
@@ -152,93 +108,23 @@ class QueryProcessor:
                     }
                 }
             
-            # Classify the query
-            query_type = self._classify_query(query)
-            
-            if not self.vector_db_manager:
+            # Ensure CrewAI is properly initialized
+            if not self.crew:
                 return {
                     "status": "error",
                     "data": {
-                        "message": "Vector database manager is not initialized"
+                        "message": "Advanced query engine is not initialized. Please check logs for details."
                     }
                 }
             
-            # Query the vector store for relevant information
-            semantic_response = await self.vector_db_manager.aquery(query)
-            relevant_info = str(semantic_response)
-            
-            # Generate tailored response based on query type
-            if query_type == "spot":
-                return {
-                    "status": "success",
-                    "data": {
-                        "message": f"Spot Trading Holdings:\n\n{relevant_info}",
-                        "investment_type": "spot"
-                    }
-                }
-            
-            elif query_type == "margin":
-                return {
-                    "status": "success",
-                    "data": {
-                        "message": f"Cross Margin Holdings:\n\n{relevant_info}",
-                        "investment_type": "spot_cross_margin"
-                    }
-                }
-            
-            elif query_type == "futures":
-                return {
-                    "status": "success",
-                    "data": {
-                        "message": f"Futures Holdings:\n\n{relevant_info}",
-                        "investment_type": "futures"
-                    }
-                }
-            
-            elif query_type == "holdings":
-                return {
-                    "status": "success",
-                    "data": {
-                        "message": f"Portfolio Holdings:\n\n{relevant_info}"
-                    }
-                }
-            
-            elif query_type == "returns":
-                return {
-                    "status": "success",
-                    "data": {
-                        "message": f"Portfolio Returns:\n\n{relevant_info}"
-                    }
-                }
-            
-            elif query_type == "technical":
-                return {
-                    "status": "success",
-                    "data": {
-                        "message": f"Technical Indicators Analysis:\n\n{relevant_info}"
-                    }
-                }
-            
-            elif query_type == "allocation":
-                return {
-                    "status": "success",
-                    "data": {
-                        "message": f"Portfolio Allocation Analysis:\n\n{relevant_info}"
-                    }
-                }
-            
-            # Default response
-            return {
-                "status": "success",
-                "data": {
-                    "message": f"Portfolio Analysis:\n\n{relevant_info}"
-                }
-            }
+            # Process query with the CrewAI system
+            print(f"Processing async query with advanced multi-agent system: {query}")
+            return await self.crew.process_query_async(query)
                 
         except Exception as e:
             return {
                 "status": "error",
                 "data": {
-                    "message": f"Error processing query: {str(e)}"
+                    "message": f"Error processing async query with advanced engine: {str(e)}"
                 }
             } 
